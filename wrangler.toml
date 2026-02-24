@@ -1,0 +1,25 @@
+name = "transparentrx-pricing"
+main = "src/index.ts"
+compatibility_date = "2024-02-23"
+
+# Add Cron Trigger for monthly refresh
+[triggers]
+crons = ["0 3 1 * *"]  # Runs at 3:00 AM UTC on the 1st of every month
+
+# D1 Database configuration
+[[d1_databases]]
+binding = "DB"
+database_name = "transparentrx-ndc"
+database_id = "b37815f4-0005-478f-89e9-aa04b63d1b0d"
+
+# Environment variables
+[vars]
+NADAC_URL = "https://data.medicaid.gov/api/views/8k7x-4v9p/rows.csv"
+CMS_URL = "https://data.cms.gov/api/views/97k6-xxm7/rows.csv"
+AWP_FACTOR = "0.85"
+GEO_ENABLED = "true"
+ENVIRONMENT = "production"
+
+# Environment-specific overrides (optional)
+[env.staging]
+vars = { ENVIRONMENT = "staging" }
