@@ -1,282 +1,145 @@
-import { Router } from 'itty-router';
-import Stripe from 'stripe';
-import { calculateTruePrice } from './algorithms/trueprice';
-import { calculateDistortionScore } from './algorithms/distortion';
-import { refreshNDC } from './handlers/refresh';
-import { importNDCFromFDA, initialImport } from './handlers/fdaImport';
-import { D1Database } from '@cloudflare/workers-types';
+import { Router } from 'itty-router'
 
-interface Env {
-  DB: D1Database;
-  STRIPE_SECRET_KEY: string;
-  STRIPE_WEBHOOK_SECRET: string;
-  REFRESH_TOKEN?: string;
-  FDA_API_KEY?: string;
-  NADAC_URL: string;
-  CMS_URL: string;
-  AWP_FACTOR: string;
-  GEO_ENABLED: string;
-  ENVIRONMENT?: string;
+export interface Env {
+  DB: D1Database
+  NADAC_URL: string
+  CMS_URL: string
+  AWP_FACTOR: string
+  GEO_ENABLED: string
+  ENVIRONMENT: string
+  REFRESH_TOKEN?: string
 }
 
-const router = Router();
+const router = Router()
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://www.transparentrx.io',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+function buildCorsHeaders(request?: Request) {
+  const origin =
+    request?.headers.get('Origin') || 'https://www.transparentrx.io'
 
-// Health check endpoint
-router.get('/', async () => {
-  return new Response('TransparentRX API is running', {
-    status: 200,
-    headers: { 'Content-Type': 'text/plain' }
-  });
-});
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
+  }
+}
 
-// Drug search endpoint
-router.get('/api/search', async (request: Request, env: Env) => {
+function json(data: any, status = 200, request?: Request) {
+  const cors = buildCorsHeaders(request)
+
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...cors,
+    },
+  })
+}
+
+router.get('/api/health', () => {
+  return new Response(
+    JSON.stringify({
+      status: 'ok',
+      service: 'transparentrx-pricing',
+    }),
+    { headers: { 'Content-Type': 'application/json' } }
+  )
+})
+
+router.get('/api/price', async (request: Request, env: Env) => {
+  const url = new URL(request.url)
+
+  const drug = url.searchParams.get('drug')
+  const strength = url.searchParams.get('strength')
+  const quantity = url.searchParams.get('quantity')
+
+  if (!drug || !strength || !quantity) {
+    return json({ error: 'missing parameters' }, 400, request)
+  }
+
+  const row = await env.DB.prepare(`
+    SELECT observed_retail_low,
+           observed_retail_median,
+           observed_retail_high
+    FROM retail_by_drug
+    WHERE canonical_name = ?
+AND strength = ?
+ORDER BY ABS(quantity - ?)
+LIMIT 1
+  `)
+  .bind(drug, strength, Number(quantity))
+  .first()
+
+  return json(row || {}, 200, request)
+})
+
+router.post('/api/create-job', async (request: Request, env: Env) => {
   try {
-    const url = new URL(request.url);
-    const query = url.searchParams.get('q');
-    
-    if (!query || query.length < 2) {
-      return new Response(JSON.stringify([]), { 
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
-    }
+    const { ndc, drug_name, strength, quantity, zip_code } =
+      await request.json()
 
-    const { results } = await env.DB.prepare(`
-      SELECT 
-        ndc_11,
-        proprietary_name,
-        nonproprietary_name,
-        dosage_form,
-        strength,
-        route,
-        labeler_name
-      FROM ndc_master 
-      WHERE 
-        proprietary_name LIKE ? OR 
-        nonproprietary_name LIKE ?
-      LIMIT 15
-    `).bind(`%${query}%`, `%${query}%`).all();
+    await env.DB.prepare(`
+      INSERT INTO scrape_jobs
+      (ndc, drug_name, strength, quantity, zip_code, status, created_at)
+      VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
+    `)
+    .bind(ndc || null, drug_name, strength, quantity, zip_code)
+    .run()
 
-    const formatted = (results || []).map((row: any) => ({
-      ndc: row.ndc_11,
-      display: row.proprietary_name || row.nonproprietary_name,
-      generic: row.nonproprietary_name,
-      form: row.dosage_form,
-      strength: row.strength,
-      manufacturer: row.labeler_name
-    }));
-
-    return new Response(JSON.stringify(formatted), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
+    return json({ success: true }, 200, request)
+  } catch (err: any) {
+    return json({ error: err.message }, 500, request)
   }
-});
+})
 
-// TruePrice endpoint
-router.post('/api/price', async (request: Request, env: Env) => {
-  try {
-    const { ndc, userPrice, zip, dailyDosage } = await request.json() as any;
-    
-    const drug = await env.DB.prepare(`
-      SELECT * FROM ndc_master WHERE ndc_11 = ?
-    `).bind(ndc).first();
+router.get('/api/next-job', async (request: Request, env: Env) => {
+  const job = await env.DB.prepare(`
+    SELECT *
+    FROM scrape_jobs
+    WHERE status = 'pending'
+    ORDER BY created_at
+    LIMIT 1
+  `).first()
 
-    if (!drug) {
-      return new Response(JSON.stringify({ error: 'NDC not found' }), {
-        status: 404,
-        headers: corsHeaders
-      });
-    }
+  if (!job) return json(null, 200, request)
 
-    const truePrice = calculateTruePrice(drug, zip);
-    const monthlySavings = (userPrice - truePrice.trueMid) * (dailyDosage || 1);
-    
-    const distortionScore = calculateDistortionScore({
-      userPrice,
-      trueMid: truePrice.trueMid,
-      trueLow: truePrice.trueLow,
-      trueHigh: truePrice.trueHigh,
-      dataFreshness: drug.last_updated ? 0.9 : 0.5
-    });
+  await env.DB.prepare(`
+    UPDATE scrape_jobs
+    SET status = 'processing'
+    WHERE id = ?
+  `)
+  .bind(job.id)
+  .run()
 
-    const subscriptionCost = 12;
-    const monthsToBreakeven = monthlySavings > 0 
-      ? (subscriptionCost / monthlySavings).toFixed(1)
-      : null;
-    const annualNetGain = monthlySavings > 0 
-      ? (monthlySavings * 12) - (subscriptionCost * 12)
-      : null;
+  return json(job, 200, request)
+})
 
-    const response = {
-      ndc: drug.ndc_11,
-      drugName: drug.proprietary_name || drug.nonproprietary_name,
-      userPrice,
-      truePrice: {
-        low: Number(truePrice.trueLow.toFixed(2)),
-        mid: Number(truePrice.trueMid.toFixed(2)),
-        high: Number(truePrice.trueHigh.toFixed(2)),
-        confidence: truePrice.confidence
-      },
-      layers: truePrice.layers.map((l: any) => ({
-        name: l.name,
-        value: Number(l.value.toFixed(2)),
-        description: l.description
-      })),
-      monthlySavings: Number(monthlySavings.toFixed(2)),
-      annualSavings: Number((monthlySavings * 12).toFixed(2)),
-      distortionScore,
-      breakEven: {
-        monthsToBreakeven: monthsToBreakeven ? Number(monthsToBreakeven) : null,
-        annualNetGain: annualNetGain ? Number(annualNetGain.toFixed(2)) : null
-      },
-      sources: ['NADAC', 'CMS Part D', 'AWP'],
-      lastUpdated: drug.last_updated
-    };
+router.post('/api/job-complete', async (request: Request, env: Env) => {
+  const { id } = await request.json()
 
-    return new Response(JSON.stringify(response), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
-  }
-});
+  if (!id) return json({ error: 'missing id' }, 400, request)
 
-// Checkout endpoint
-router.post('/api/checkout', async (request: Request, env: Env) => {
-  try {
-    const { priceId, customerEmail, metadata } = await request.json() as any;
-    
-    const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-      apiVersion: '2023-10-16'
-    });
+  await env.DB.prepare(`
+    UPDATE scrape_jobs
+    SET status = 'complete',
+        completed_at = datetime('now')
+    WHERE id = ?
+  `)
+  .bind(id)
+  .run()
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      payment_method_types: ['card'],
-      line_items: [{
-        price: priceId,
-        quantity: 1
-      }],
-      success_url: 'https://www.transparentrx.io/checkout/success?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://www.transparentrx.io/pricing',
-      customer_email: customerEmail,
-      metadata
-    });
+  return json({ success: true }, 200, request)
+})
 
-    return new Response(JSON.stringify({ url: session.url }), {
-      headers: corsHeaders
-    });
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: corsHeaders
-    });
-  }
-});
+router.options('*', (request: Request) =>
+  new Response(null, { status: 204, headers: buildCorsHeaders(request) })
+)
 
-// Stripe webhook endpoint
-router.post('/api/webhook', async (request: Request, env: Env) => {
-  try {
-    const body = await request.text();
-    const signature = request.headers.get('stripe-signature') || '';
-    
-    const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-      apiVersion: '2023-10-16'
-    });
-
-    const event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      env.STRIPE_WEBHOOK_SECRET
-    );
-
-    switch (event.type) {
-      case 'checkout.session.completed':
-        console.log('Checkout completed:', (event.data.object as any).id);
-        break;
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-        console.log('Subscription updated:', (event.data.object as any).id);
-        break;
-    }
-
-    return new Response(JSON.stringify({ received: true }), {
-      headers: corsHeaders
-    });
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
-      headers: corsHeaders
-    });
-  }
-});
-
-// FDA Import endpoint (one-time initial import)
-router.post('/api/import-fda', async (request: Request, env: Env) => {
-  const auth = request.headers.get('Authorization');
-  if (auth !== `Bearer ${env.REFRESH_TOKEN}`) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-  return await initialImport(env);
-});
-
-// NADAC Refresh endpoint
-router.post('/api/refresh', async (request: Request, env: Env) => {
-  if (!env.REFRESH_TOKEN) {
-    return new Response('Refresh endpoint not configured - set REFRESH_TOKEN to enable', { 
-      status: 501,
-      headers: corsHeaders
-    });
-  }
-  
-  const auth = request.headers.get('Authorization');
-  if (auth !== `Bearer ${env.REFRESH_TOKEN}`) {
-    return new Response('Unauthorized', { status: 401 });
-  }
-
-  await refreshNDC(env);
-  return new Response('Refresh complete', {
-    headers: corsHeaders
-  });
-});
-
-// Handle OPTIONS for CORS
-router.options('*', () => new Response(null, { headers: corsHeaders }));
-
-// 404 handler
-router.all('*', () => {
-  return new Response('Not Found', { 
-    status: 404,
-    headers: { 'Content-Type': 'text/plain' }
-  });
-});
+router.all('*', () =>
+  new Response('Not Found', { status: 404 })
+)
 
 export default {
-  fetch: router.handle,
-  
-  async scheduled(event: any, env: Env, ctx: any) {
-    console.log('Running scheduled tasks...');
-    
-    if (env.REFRESH_TOKEN) {
-      // Run FDA import monthly (first of month)
-      ctx.waitUntil(importNDCFromFDA(env));
-      
-      // Run NADAC refresh as well
-      ctx.waitUntil(refreshNDC(env));
-    }
-  }
-};
+  fetch: (request: Request, env: Env, ctx: ExecutionContext) =>
+    router.handle(request, env, ctx),
+}

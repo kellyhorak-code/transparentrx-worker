@@ -1,0 +1,84 @@
+/* =========================================================
+   STRENGTHS
+========================================================= */
+
+router.get('/api/strengths', async (request, env: any) => {
+
+  try {
+
+    const url = new URL(request.url)
+    const drug = (url.searchParams.get('drug') || '').toLowerCase().trim()
+
+    if (!drug) return json([], 200, request)
+
+    const result = await env.DB.prepare(`
+      SELECT
+        MIN(ndc) AS ndc,
+        strength,
+        dosage_form
+      FROM drug_search
+      WHERE LOWER(display_name) LIKE ?
+        AND strength IS NOT NULL
+        AND strength != ''
+        AND strength GLOB '*[0-9]*'
+      GROUP BY strength, dosage_form
+      ORDER BY CAST(strength AS FLOAT)
+      LIMIT 50
+    `).bind(`%${drug}%`).all()
+
+    const rows = result.results || []
+
+    const clusterMap = new Map()
+
+    function normalizeStrength(s: string) {
+      return (s || '')
+        .toLowerCase()
+        .replace(/\/1/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    }
+
+    function normalizeForm(f: string) {
+      return (f || '')
+        .toLowerCase()
+        .replace(/film.?coated/g,'')
+        .replace(/scored/g,'')
+        .replace(/oral/g,'')
+        .replace(/tablets?/g,'tablet')
+        .replace(/capsules?/g,'capsule')
+        .replace(/\s+/g,' ')
+        .trim()
+    }
+
+    for (const r of rows) {
+
+      const strength = normalizeStrength(r.strength)
+      const form = normalizeForm(r.dosage_form)
+
+      if (!strength) continue
+      if (!/[0-9]/.test(strength)) continue
+      if (strength.includes(';')) continue
+
+      const key = `${strength}|${form}`
+
+      if (!clusterMap.has(key)) {
+        clusterMap.set(key, {
+          ndc: r.ndc,
+          strength
+        })
+      }
+
+    }
+
+    const clustered = Array.from(clusterMap.values())
+      .sort((a: any, b: any) => parseFloat(a.strength) - parseFloat(b.strength))
+
+    return json(clustered, 200, request)
+
+  } catch (err: any) {
+
+    return json({ error: err.message }, 500, request)
+
+  }
+
+})

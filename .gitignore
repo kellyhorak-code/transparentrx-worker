@@ -1,7 +1,22 @@
-node_modules/
-dist/
-.wrangler/
-.dev.vars
+# environments
+scraper-env/
+venv/
 .env
-*.log
+
+# datasets
+*.csv
+*.zip
+*.db
+nadac*
+ndc*
+
+# temp / backups
+*.save
+*.backup
+backups/
+
+# node
+node_modules/
+
+# mac
 .DS_Store

@@ -6,11 +6,12 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "itty-router": "^4.0.0"
+    "itty-router": "^4.0.0",
+    "stripe": "^20.4.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.0.0",
     "typescript": "^5.0.0",
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.72.0"
   }
 }

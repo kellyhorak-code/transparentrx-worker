@@ -11,7 +11,7 @@ interface FDAResult {
   brand_name?: string;
   active_ingredients?: Array<{ name: string; strength: string }>;
   dosage_form?: string;
-  route?: string;
+  route?: string | string[];  // ← Can be string OR array!
   labeler_name?: string;
   marketing_category?: string;
   packaging?: Array<{
@@ -24,10 +24,17 @@ interface FDAResult {
  * Normalize NDC to 11 digits
  */
 function normalizeNDC(ndc: string): string {
-  // Remove any non-digit characters
   const digits = ndc.replace(/\D/g, '');
-  // Pad to 11 digits
   return digits.padStart(11, '0');
+}
+
+/**
+ * Safely convert any value to string for database insertion
+ */
+function safeString(value: any): string {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.join('; ');  // ← Convert array to semicolon-separated string
+  return String(value);
 }
 
 /**
@@ -58,12 +65,9 @@ function processBatch(results: FDAResult[]): any[] {
   const batch = [];
   
   for (const drug of results) {
-    // Skip if no product_ndc
     if (!drug.product_ndc) continue;
     
     const productNdc = normalizeNDC(drug.product_ndc);
-    
-    // Process each package variation
     const packages = drug.packaging || [{ package_ndc: drug.product_ndc, description: '' }];
     
     for (const pkg of packages) {
@@ -74,18 +78,21 @@ function processBatch(results: FDAResult[]): any[] {
       const ingredientNames = ingredients.map(i => i.name).join('; ');
       const strengths = ingredients.map(i => i.strength).join('; ');
       
+      // CRITICAL FIX: Convert route to string if it's an array
+      const route = safeString(drug.route);
+      
       batch.push({
         ndc_11: packageNdc,
         product_ndc: productNdc,
-        proprietary_name: drug.brand_name || '',
-        nonproprietary_name: drug.generic_name || '',
+        proprietary_name: safeString(drug.brand_name),
+        nonproprietary_name: safeString(drug.generic_name),
         active_ingredient: ingredientNames,
         strength: strengths,
-        dosage_form: drug.dosage_form || '',
-        route: drug.route || '',
-        labeler_name: drug.labeler_name || '',
-        marketing_category: drug.marketing_category || '',
-        package_description: pkg.description || '',
+        dosage_form: safeString(drug.dosage_form),
+        route: route,  // ← Now guaranteed to be a string
+        labeler_name: safeString(drug.labeler_name),
+        marketing_category: safeString(drug.marketing_category),
+        package_description: safeString(pkg.description),
         last_updated: new Date().toISOString()
       });
     }
@@ -140,13 +147,11 @@ export async function importNDCFromFDA(env: Env): Promise<{ imported: number; to
   const apiKey = env.FDA_API_KEY || '';
   
   try {
-    // Get total count first
     const firstBatch = await fetchFromFDA(0, 1, apiKey);
     const totalRecords = firstBatch.total;
     
     console.log(`Total FDA records to process: ${totalRecords}`);
     
-    // Process in batches
     while (skip < totalRecords) {
       const { results } = await fetchFromFDA(skip, batchSize, apiKey);
       
@@ -160,7 +165,6 @@ export async function importNDCFromFDA(env: Env): Promise<{ imported: number; to
       
       console.log(`Imported ${totalImported} package NDCs so far...`);
       
-      // Small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     
