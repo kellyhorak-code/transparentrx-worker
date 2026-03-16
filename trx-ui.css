@@ -76,3 +76,96 @@ body::before{
     0 0 40px rgba(76,252,15,.12);
 }
 
+
+/* MARKET CONFIDENCE METER */
+
+.confidence-box{
+  margin-bottom:1.25rem;
+  padding:1rem;
+  border:1px solid #1a1a1a;
+  border-radius:12px;
+  background:#050505;
+}
+
+.confidence-title{
+  font-size:.65rem;
+  letter-spacing:.15em;
+  text-transform:uppercase;
+  color:#4CFC0F;
+  margin-bottom:.6rem;
+}
+
+.confidence-bar{
+  height:6px;
+  background:#0a0a0a;
+  border-radius:3px;
+  overflow:hidden;
+}
+
+#confidenceFill{
+  height:100%;
+  width:0%;
+  background:#4CFC0F;
+  box-shadow:0 0 12px rgba(76,252,15,.4);
+  transition:width .8s ease;
+}
+
+.confidence-stats{
+  margin-top:.4rem;
+  font-size:.65rem;
+  color:#555;
+}
+
+
+/* RETAIL PRICE POSITION DIAL */
+
+.dial-box{
+margin-top:1.5rem;
+padding:1rem;
+border:1px solid #1a1a1a;
+border-radius:14px;
+background:#050505;
+text-align:center;
+}
+
+.dial-title{
+font-size:.65rem;
+letter-spacing:.15em;
+text-transform:uppercase;
+color:#4CFC0F;
+margin-bottom:.75rem;
+}
+
+.dial-track{
+position:relative;
+height:12px;
+border-radius:6px;
+background:linear-gradient(
+90deg,
+#4CFC0F 0%,
+#a8e063 25%,
+#ffaa00 55%,
+#ff6b00 75%,
+#ff4444 100%
+);
+overflow:hidden;
+}
+
+.dial-pointer{
+position:absolute;
+top:-6px;
+width:4px;
+height:24px;
+background:#fff;
+box-shadow:0 0 10px rgba(255,255,255,.7);
+transition:left .7s ease;
+}
+
+.dial-labels{
+display:flex;
+justify-content:space-between;
+font-size:.65rem;
+margin-top:.35rem;
+color:#444;
+}
+

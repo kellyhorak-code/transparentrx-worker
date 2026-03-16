@@ -590,6 +590,18 @@ class PrescriptionEconomics extends HTMLElement {
                 <div class="vp-grid">
                   <div class="vp"><h3>TruePrice™ Range</h3><p>Live market range from acquisition cost to retail ceiling — with your price positioned on the spectrum.</p></div>
                   <div class="vp"><h3>Price Layer Decomposition</h3><p>Every dollar explained: from what the pharmacy paid to what they charged you, layer by layer.</p></div>
+<div class="dial-box">
+<div class="dial-title">Retail Market Position</div>
+<div class="dial-track">
+<div id="pricePointer" class="dial-pointer" style="left:50%"></div>
+</div>
+<div class="dial-labels">
+<span>Low</span>
+<span>Fair</span>
+<span>High</span>
+</div>
+</div>
+
                   <div class="vp"><h3>Break-Even Economics</h3><p>The exact day TransDex™ pays for itself. Net monthly and annual gain from your specific scenario.</p></div>
                 </div>
               </div>
@@ -674,6 +686,18 @@ class PrescriptionEconomics extends HTMLElement {
                     </div>
                   </div>
                 </div>
+
+<div class="dial-box">
+<div class="dial-title">Retail Market Position</div>
+<div class="dial-track">
+<div id="pricePointer" class="dial-pointer" style="left:50%"></div>
+</div>
+<div class="dial-labels">
+<span>Low</span>
+<span>Fair</span>
+<span>High</span>
+</div>
+</div>
 
                 <div class="sec-hd">Break-Even Economics</div>
                 <div class="bbox">
@@ -1366,6 +1390,13 @@ sr.getElementById("confidenceFill").style.width = score+"%";
     const low  = parseFloat(tp.low)  || 0;
     const high = parseFloat(tp.high) || 0;
     const tdi  = parseFloat(tp.tdi || tp.mid || (low + (high-low)*.35)) || ((low+high)/2);
+const range = Math.max(high-low,0.01);
+const pos = Math.max(2,Math.min(98,((userPrice-low)/range)*100));
+setTimeout(()=>{
+const p = sr.getElementById("pricePointer");
+if(p){p.style.left = pos+"%";}
+},150);
+
     const qty  = Math.ceil(this.duration * daily);
 
     // Range bar
