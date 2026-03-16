@@ -541,6 +541,29 @@ class PrescriptionEconomics extends HTMLElement {
 
               <div class="ig">
                 <label>Your Current Price ($)</label>
+<div class="ig">
+<label>Pharmacy / Retailer</label>
+<select id="pharmacySel">
+<option value="">Select pharmacy</option>
+<option>CVS</option>
+<option>Walgreens</option>
+<option>Walmart Pharmacy</option>
+<option>Kroger Pharmacy</option>
+<option>Costco Pharmacy</option>
+<option>Publix Pharmacy</option>
+<option>H-E-B Pharmacy</option>
+<option>Safeway Pharmacy</option>
+<option>Albertsons Pharmacy</option>
+<option>Rite Aid</option>
+<option>Target Pharmacy</option>
+<option>Sam's Club Pharmacy</option>
+<option>Meijer Pharmacy</option>
+<option>Fred Meyer Pharmacy</option>
+<option value="independent">Independent Pharmacy</option>
+<option value="other">Other</option>
+</select>
+</div>
+
                 <input id="userPrice" type="number" placeholder="0.00" value="18.00" step="0.01" min="0">
               </div>
 
@@ -575,6 +598,15 @@ class PrescriptionEconomics extends HTMLElement {
               <div id="resV" style="display:none;">
 
                 <div class="sec-hd">TruePrice™ Market Range</div>
+<div class="confidence-box">
+<div class="confidence-title">Market Data Confidence</div>
+<div class="confidence-bar"><div id="confidenceFill"></div></div>
+<div class="confidence-stats">
+<span id="pharmacyCount">—</span> pharmacies · 
+<span id="obsCount">—</span> observations
+</div>
+</div>
+
                 <div class="rbox">
                   <div class="rbox-top">
                     <span class="conf" id="confBadge">⬤ High Confidence</span>
@@ -980,7 +1012,13 @@ class PrescriptionEconomics extends HTMLElement {
     try {
       const res  = await fetch(`${API}/api/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
-      const seen = new Map();
+      const seen = new Map()
+(data || []).forEach(item => {
+const name = (item.canonical || item.name || "").toLowerCase();
+const cleaned = name.replace(/\s+/g," ").replace(/\s?(mg|mcg|ml|g)\b/i,"");
+if(!seen.has(cleaned)){seen.set(cleaned,item);}
+});
+
       (data||[]).forEach(item => {
         const raw     = (item.display || item.name || '').trim();
         const cleaned = raw.replace(/\s+\d[\d.]*\s*(mg|mcg|ml|%|g|iu|units?)\b.*/i,'').trim() || raw;
@@ -1191,7 +1229,8 @@ class PrescriptionEconomics extends HTMLElement {
     try {
       const res = await fetch(`${API}/api/price`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ ndc, userPrice, dailyDosage:daily, drugType: this.drugType })
+        body: JSON.stringify({ ndc, userPrice, dailyDosage:daily,
+pharmacy:sr.getElementById("pharmacySel").value || null,
       });
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
@@ -1314,6 +1353,15 @@ updateConfidence(data.observations);
     sr.getElementById('resV').style.display  = 'block';
 
     const tp   = data.truePrice || {};
+const pharmacies = data.pharmacy_count || 0;
+const obs = data.observations || 0;
+sr.getElementById("pharmacyCount").textContent = pharmacies;
+sr.getElementById("obsCount").textContent = obs;
+let score = Math.min(100,(pharmacies*2 + obs/10));
+setTimeout(()=>{
+sr.getElementById("confidenceFill").style.width = score+"%";
+},200);
+
     const lyrs = data.layers    || [];
     const low  = parseFloat(tp.low)  || 0;
     const high = parseFloat(tp.high) || 0;
