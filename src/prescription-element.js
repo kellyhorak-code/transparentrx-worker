@@ -1,3 +1,5 @@
+function animateNumber(el,value){let start=0;const duration=600;const startTime=performance.now();function update(time){const progress=Math.min((time-startTime)/duration,1);const current=start+(value-start)*progress;el.textContent="$"+current.toFixed(2);if(progress<1){requestAnimationFrame(update)}}requestAnimationFrame(update)}
+
 // TransparentRx Prescription Economics Web Component — build 2026-03-10c
 // prescription-element.js — TransparentRx v3.1
 // Upgrade trigger: fires 1.5s after first analysis completes — slide-up banner, non-blocking
@@ -1329,7 +1331,7 @@ updateConfidence(data.observations);
     const rlHighCol = sr.getElementById('rlHighCol');
     if (hasLow)  { sr.getElementById('rlLow').textContent  = `$${low.toFixed(2)}`;  rlLowCol.style.display  = ''; }
     else         { rlLowCol.style.display  = 'none'; }
-    if (hasHigh) { sr.getElementById('rlHigh').textContent = `$${high.toFixed(2)}`; rlHighCol.style.display = ''; }
+    if (hasHigh) { sr.getElementById('rlHigh').animateNumber(this.shadowRoot.getElementById("rlTdi"),high.toFixed(2)); rlHighCol.style.display = ''; }
     else         { rlHighCol.style.display = 'none'; }
 
     // Markup pill — (retail - acquisition) / acquisition

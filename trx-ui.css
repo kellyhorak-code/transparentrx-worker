@@ -1,0 +1,78 @@
+
+/* PREMIUM GRID BACKGROUND */
+
+body{
+  background:#000;
+  color:#fff;
+  overflow-x:hidden;
+}
+
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  background:
+    linear-gradient(rgba(76,252,15,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76,252,15,0.04) 1px, transparent 1px);
+  background-size:60px 60px;
+  pointer-events:none;
+  z-index:0;
+}
+
+.page{
+  position:relative;
+  z-index:2;
+}
+
+/* TRUEPRICE BAR ANIMATION */
+
+.track{
+  height:14px;
+  border-radius:7px;
+  background:linear-gradient(
+    90deg,
+    #4CFC0F 0%,
+    #9dff6a 20%,
+    #ffaa00 45%,
+    #ff6b00 70%,
+    #ff4444 100%
+  );
+  position:relative;
+  overflow:hidden;
+}
+
+.track::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(
+    120deg,
+    transparent,
+    rgba(255,255,255,0.15),
+    transparent
+  );
+  animation:trackScan 4s linear infinite;
+}
+
+@keyframes trackScan{
+  0%{transform:translateX(-100%)}
+  100%{transform:translateX(100%)}
+}
+
+/* PANEL GLOW */
+
+.rbox,
+.wbox,
+.bbox{
+  transition:all .35s ease;
+}
+
+.rbox:hover,
+.wbox:hover,
+.bbox:hover{
+  border-color:#4CFC0F;
+  box-shadow:
+    0 0 0 1px rgba(76,252,15,.3),
+    0 0 40px rgba(76,252,15,.12);
+}
+
