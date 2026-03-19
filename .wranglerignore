@@ -5,3 +5,5 @@ node_modules
 __pycache__
 scripts-python
 drug-ndc-0001-of-0001.json
+*.json
+*.csv
