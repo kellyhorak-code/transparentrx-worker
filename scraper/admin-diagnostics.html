@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>TransparentRx Diagnostics</title>
+<style>
+body{font-family:system-ui;background:#111;color:#eee;padding:40px}
+.card{background:#1c1c1c;padding:20px;margin:10px 0;border-radius:8px}
+h1{margin-bottom:30px}
+</style>
+</head>
+<body>
+
+<h1>TransparentRx System Diagnostics</h1>
+
+<div id="data"></div>
+
+<script>
+fetch("https://transparentrx-pricing.kellybhorak.workers.dev/admin/diagnostics")
+.then(r=>r.json())
+.then(d=>{
+document.getElementById("data").innerHTML = `
+<div class="card">Retail Price Rows: ${d.retail_rows}</div>
+<div class="card">Retail Drugs: ${d.retail_drugs}</div>
+<div class="card">NADAC Drugs: ${d.nadac_drugs}</div>
+<div class="card">TransDex Rows: ${d.transdex_rows}</div>
+<div class="card">Retail Coverage: ${d.retail_coverage.with_data}/${d.retail_coverage.total}</div>
+`;
+})
+</script>
+
+</body>
+</html>
+
+fetch("https://transparentrx-pricing.kellybhorak.workers.dev/admin/last-scrapes")
+.then(r=>r.json())
+.then(rows=>{
+let html = "<h2>Last Scrape Activity</h2>";
+rows.forEach(r=>{
+html += `<div class=\"card\">${r.pharmacy_chain} — Last scrape: ${r.last_scrape} — ${r.observations} records</div>`
+});
+document.getElementById("data").innerHTML += html;
+});
+
+
+fetch("https://transparentrx-pricing.kellybhorak.workers.dev/admin/top250-coverage")
+.then(r=>r.json())
+.then(d=>{
+let html = `
+<h2>Top 250 Retail Coverage</h2>
+<div class=\"card\">Retail Coverage: ${d.drugs_with_retail_data}/${d.total_drugs}</div>
+<div class=\"card\">Coverage Percent: ${d.retail_coverage_pct}

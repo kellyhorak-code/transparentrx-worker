@@ -1,18 +1,30 @@
 {
   "compilerOptions": {
-    "target": "es2020",
-    "module": "es2020",
-    "lib": ["es2020"],
+    "target": "ES2022",
+    "module": "ESNext",
+
+    "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types"],
-    "moduleResolution": "node",
+
+    "moduleResolution": "Bundler",
+
     "strict": true,
-    "noEmit": true,
+
+    "isolatedModules": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    "resolveJsonModule": true,
+
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+
+    "rootDir": "./src",
     "outDir": "./dist",
-    "rootDir": "./src"
+
+    "noEmit": true
   },
-  "include": ["src/**/*"],
+
+  "include": ["src/**/*", "scripts/ingestFromR2.ts"],
   "exclude": ["node_modules", "dist"]
 }

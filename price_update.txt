@@ -1,0 +1,29 @@
+    // Calculate TransDex band from retail observations
+    const band = await env.DB.prepare(`
+      SELECT
+        MIN(price) as low,
+        AVG(price) as mid,
+        MAX(price) as high,
+        COUNT(*) as sample_size
+      FROM retail_prices
+      WHERE drug_name = ?
+    `).bind(drug.nonproprietary_name || drug.proprietary_name).first()
+
+    // Calculate TransDex price using your formula:
+    // ((acq_cost - market_low) / acq_cost) * avg_retail + ((acq_cost - market_mid) / acq_cost) * avg_retail) / 2
+    const acqCost = truePrice.trueLow
+    const marketLow = band?.low || acqCost * 1.5
+    const marketMid = band?.mid || acqCost * 2.5
+    const avgRetail = band?.high || acqCost * 4
+
+    const transdexPrice = (
+      ((acqCost - marketLow) / acqCost) * avgRetail +
+      ((acqCost - marketMid) / acqCost) * avgRetail
+    ) / 2
+
+    const transdexBand = {
+      low: Number((band?.low || acqCost * 1.2).toFixed(2)),
+      mid: Number((band?.mid || acqCost * 2.0).toFixed(2)),
+      high: Number((band?.high || acqCost * 3.5).toFixed(2)),
+      sampleSize: band?.sample_size || 0
+    }

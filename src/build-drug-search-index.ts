@@ -3,7 +3,7 @@ export async function buildDrugSearchIndex(env:any){
   const rows = await env.DB.prepare(`
     SELECT
       ndc,
-      canonical_name,
+      drug_key,
       brand_name,
       strength,
       dosage_form
@@ -17,12 +17,12 @@ export async function buildDrugSearchIndex(env:any){
 
     return env.DB.prepare(`
       INSERT OR REPLACE INTO drug_search
-      (ndc, display_name, canonical_name, brand_name, strength, dosage_form, top_250)
+      (ndc, display_name, drug_key, brand_name, strength, dosage_form, top_250)
       VALUES (?,?,?,?,?,?,1)
     `).bind(
       d.ndc,
-      `${d.canonical_name} ${d.strength}`,
-      d.canonical_name,
+      `${d.drug_key} ${d.strength}`,
+      d.drug_key,
       d.brand_name,
       d.strength,
       d.dosage_form

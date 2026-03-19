@@ -334,7 +334,7 @@ router.get("/api/price", async (request, env:any) => {
   const row = await env.DB.prepare(`
     SELECT observed_retail_low, observed_retail_median, observed_retail_high
     FROM retail_by_drug
-    WHERE canonical_name=? AND strength=? AND quantity=?
+    WHERE drug_key=? AND strength=? AND quantity=?
   `).bind(drug, strength, quantity).first();
   return new Response(JSON.stringify(row || {}), {
     headers: { "Content-Type": "application/json" }
