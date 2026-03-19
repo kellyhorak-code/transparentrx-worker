@@ -2,65 +2,288 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TransparentRx — Pricing Intelligence</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TransparentRx — Know What You Should Pay</title>
 
-  <!-- Basic SEO -->
-  <meta name="description" content="See what your prescription should actually cost. Detect overpayment instantly." />
+  <link href="https://fonts.googleapis.com/css2?family=Questrial&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Minimal styling (global only) -->
   <style>
+    :root {
+      --green: #4CFC0F;
+      --black: #000;
+      --surface: #060606;
+      --border: #1a1a1a;
+      --text: #f0f0f0;
+      --muted: #888;
+    }
+
     body {
       margin: 0;
-      background: #000;
-      color: #fff;
-      font-family: Inter, system-ui, -apple-system, sans-serif;
+      background: var(--black);
+      color: var(--text);
+      font-family: Inter, sans-serif;
+      line-height: 1.6;
+      letter-spacing: -0.01em;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      margin-bottom: 1rem;
+      line-height: 1.1;
+    }
+
+    h2 {
+      color: var(--green);
+      margin-bottom: 1rem;
+    }
+
+    p {
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .cta {
+      display: inline-block;
+      margin-top: 2rem;
+      padding: 1rem 2.5rem;
+      background: var(--green);
+      color: black;
+      border-radius: 40px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s ease;
+    }
+
+    .cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(76,252,15,0.3);
+    }
+
+    /* TERMINAL HERO */
+
+    .terminal-hero {
+      max-width: 900px;
+      margin: 2rem auto 3rem;
+      padding: 0 2rem;
+    }
+
+    .terminal-window {
+      background: #020202;
+      border: 1px solid #1a1a1a;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(76,252,15,0.05),
+        0 20px 60px rgba(0,0,0,0.8);
+    }
+
+    .terminal-header {
       display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      min-height: 100vh;
-      padding: 40px 16px;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid #111;
+      color: #666;
     }
 
-    .app-container {
-      width: 100%;
-      max-width: 720px;
+    .terminal-status {
+      color: var(--green);
     }
 
-    .header {
-      text-align: center;
-      margin-bottom: 24px;
+    .terminal-body {
+      padding: 1.25rem 1.5rem 1.5rem;
+      font-family: monospace;
     }
 
-    .header h1 {
-      margin: 0;
-      font-size: 28px;
-      color: #4CFC0F;
+    .terminal-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.3rem 0;
     }
 
-    .header p {
-      margin-top: 8px;
-      color: #888;
-      font-size: 14px;
+    .terminal-row.highlight {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin: 0.4rem 0;
+    }
+
+    .label { color: #666; }
+    .value { color: #fff; }
+
+    .green { color: #4CFC0F; }
+    .red { color: #ff4d4d; }
+
+    .price-bar {
+      margin-top: 1rem;
+      height: 6px;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #00ff88, #eab308, #ef4444);
+      position: relative;
+    }
+
+    .marker {
+      position: absolute;
+      top: -6px;
+      width: 2px;
+      height: 18px;
+      background: white;
+      box-shadow: 0 0 8px rgba(255,255,255,0.8);
+      left: 78%;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+      border-radius: 12px;
+      margin: 1.5rem 0;
+    }
+
+    .grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    @media (min-width: 700px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .pricing {
+      margin-top: 4rem;
+      padding: 3rem 2rem;
+      background: #050505;
+      border-top: 1px solid var(--border);
+    }
+
+    .price {
+      font-size: 2.5rem;
+      color: var(--green);
     }
   </style>
 </head>
+
 <body>
 
-  <div class="app-container">
+<div class="container">
 
-    <div class="header">
-      <h1>TransparentRx™</h1>
-      <p>Know what your prescription should actually cost</p>
+  <h1>Are You Overpaying for Your Prescription?</h1>
+
+  <p>
+    Most people are — not because drugs are expensive, but because pricing is hidden.
+    <br><br>
+    We show you what your medication <strong>should cost</strong> before you reach the pharmacy.
+  </p>
+
+  <a href="/calculator/" class="cta">Check My Price →</a>
+
+</div>
+
+<!-- TERMINAL HERO -->
+<section class="terminal-hero">
+  <div class="terminal-window">
+
+    <div class="terminal-header">
+      <span>TransparentRx Terminal</span>
+      <span class="terminal-status">LIVE ANALYSIS</span>
     </div>
 
-    <!-- 🔥 Your Web Component -->
-    <prescription-economics></prescription-economics>
+    <div class="terminal-body">
+
+      <div class="terminal-row">
+        <span class="label">Drug</span>
+        <span class="value">Lisinopril 10mg</span>
+      </div>
+
+      <div class="terminal-row">
+        <span class="label">You Paid</span>
+        <span class="value">$18.99</span>
+      </div>
+
+      <div class="terminal-row highlight">
+        <span class="label">TruePrice™</span>
+        <span class="value green">$9.12</span>
+      </div>
+
+      <div class="terminal-row">
+        <span class="label">Overpayment</span>
+        <span class="value red">+108%</span>
+      </div>
+
+      <div class="terminal-row">
+        <span class="label">Best Pharmacy</span>
+        <span class="value">Walmart — $9.00</span>
+      </div>
+
+      <div class="terminal-row">
+        <span class="label">Recommendation</span>
+        <span class="value green">SWITCH PHARMACY</span>
+      </div>
+
+      <div class="price-bar">
+        <div class="marker"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<div class="container">
+
+  <div class="card">
+    <h2>What You'll See</h2>
+    <div class="grid">
+      <p>✔ What the pharmacy paid</p>
+      <p>✔ What you should pay</p>
+      <p>✔ Hidden markups</p>
+      <p>✔ Where to save instantly</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Why This Matters</h2>
+    <p>
+      If you've ever wondered why your prescription costs so much — you're not alone.
+      <br><br>
+      You're not seeing the real price — you're seeing a marked-up version of it.
+    </p>
+  </div>
+
+</div>
+
+<div class="pricing">
+
+  <div class="container">
+
+    <h2>Start Free. Upgrade When It Matters.</h2>
+
+    <div class="grid">
+
+      <div class="card">
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <p>Run one analysis. No account required.</p>
+      </div>
+
+      <div class="card">
+        <h3 style="color: var(--green)">Premium</h3>
+        <div class="price">$12/mo</div>
+        <p>Track medications, detect price changes, and never overpay again.</p>
+      </div>
+
+    </div>
 
   </div>
 
-  <!-- Load your component -->
-  <script src="./prescription-element.js"></script>
+</div>
 
 </body>
 </html>
