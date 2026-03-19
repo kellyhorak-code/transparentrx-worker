@@ -2,96 +2,75 @@ class PrescriptionEconomics extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this.selected = null; // holds chosen drug object
-    this.selectedNdc = null;
   }
 
   connectedCallback() {
-    this.render();
-    this.bind();
-  }
-
-  render() {
     this.shadowRoot.innerHTML = `
-      <style>
-        :host { display:block; font-family:system-ui; color:#fff; }
-        .box { background:#060606; border:1px solid #181818; border-radius:16px; padding:20px; }
-        input, select {
-          width:100%; padding:12px; margin-top:10px;
-          background:#000; color:#fff; border:1px solid #222; border-radius:10px;
-        }
-        .dropdown { background:#0a0a0a; border:1px solid #222; margin-top:4px; border-radius:10px; max-height:200px; overflow:auto; }
-        .item { padding:10px; cursor:pointer; }
-        .item:hover { background:#111; color:#4CFC0F; }
-        .hidden { display:none; }
-        .btn { margin-top:12px; padding:12px; border:none; border-radius:10px; background:#4CFC0F; color:#000; font-weight:700; cursor:pointer; }
-        .result { margin-top:16px; padding:12px; border-radius:10px; background:#0a0a0a; }
-      </style>
-
-      <div class="box">
-        <input id="search" placeholder="Search drug (e.g., lisinopril)" />
-        <div id="dropdown" class="dropdown"></div>
-
-        <select id="strength" class="hidden"></select>
-        <input id="price" class="hidden" type="number" placeholder="What did you pay?" />
-        <button id="calc" class="btn hidden">Analyze</button>
-
-        <div id="result" class="result hidden"></div>
-      </div>
+      <div id="result"></div>
     `;
   }
 
-  bind() {
-    const search = this.shadowRoot.getElementById('search');
-    const dropdown = this.shadowRoot.getElementById('dropdown');
-    const strength = this.shadowRoot.getElementById('strength');
-    const price = this.shadowRoot.getElementById('price');
-    const calc = this.shadowRoot.getElementById('calc');
-    const result = this.shadowRoot.getElementById('result');
+  renderTerminalV2(data) {
+    const el = this.shadowRoot.getElementById("result");
 
-    // SEARCH
-    search.addEventListener('input', async (e) => {
-      const q = e.target.value.trim();
-      if (q.length < 2) { dropdown.innerHTML = ''; return; }
+    const position =
+      ((data.userPrice - data.simulation.low) /
+      (data.simulation.high - data.simulation.low)) * 100;
 
-      const res = await fetch(
-        "https://transparentrx-pricing.kellybhorak.workers.dev/api/search?q=" + encodeURIComponent(q)
-      );
-      const data = await res.json();
-this.renderFullEconomics(data);
-this.renderLayers(data);
+    el.innerHTML = `
+    <div style="font-family:Inter,sans-serif;color:#fff;padding:20px;background:#000">
+
+      <!-- POSITION -->
+      <div style="font-size:22px;font-weight:700;">
+        $${data.userPrice} → 
+        <span style="color:#4CFC0F">$${data.truePrice.mid}</span>
+      </div>
+
+      <div style="color:#ff4d4d;font-size:14px;margin-top:4px;">
+        Overpay: $${(data.userPrice - data.truePrice.mid).toFixed(2)}
+      </div>
+
+      <!-- MARKET -->
+      <div style="margin-top:12px;font-size:12px;color:#aaa;">
+        Market Range: $${data.min} – $${data.max}
+      </div>
+
+      <!-- FORECAST -->
+      <div style="margin-top:16px;border-top:1px solid #111;padding-top:10px;">
+        <div style="font-size:11px;color:#666;">FORECAST (30D)</div>
+
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span>$${data.simulation.low}</span>
+          <span style="color:#4CFC0F">$${data.simulation.expected}</span>
+          <span>$${data.simulation.high}</span>
+        </div>
+
+        <div style="margin-top:6px;height:6px;
+          background:linear-gradient(90deg,#00ff88,#eab308,#ef4444);
+          border-radius:4px;position:relative;">
+
+          <div style="position:absolute;
+            left:${position}%;
+            top:-6px;width:2px;height:18px;background:white;">
+          </div>
+        </div>
+
+        <div style="font-size:12px;color:#aaa;margin-top:6px;">
+          ${data.userPrice > data.simulation.expected 
+            ? "Above expected future pricing"
+            : "Within expected range"}
+        </div>
+      </div>
+
+      <!-- BEST OPTION -->
+      <div style="margin-top:16px;">
+        Best: ${data.bestPharmacy?.name} — 
+        <span style="color:#4CFC0F">$${data.bestPharmacy?.price}</span>
+      </div>
+
+    </div>
+    `;
+  }
 }
 
 customElements.define('prescription-economics', PrescriptionEconomics);
-
-// Clean recommendation text
-formatRecommendation(type) {
-  const map = {
-    switch_pharmacy: "⚠️ Switch pharmacies immediately",
-    shop_around: "🔍 Compare nearby pharmacies",
-    fair_price: "✅ You are paying a fair price"
-  };
-  return map[type] || "";
-}
-
-
-renderLayers(data) {
-  const container = this.shadowRoot.getElementById('premium-lock');
-
-  if (!data.layers) return;
-
-  container.innerHTML = `
-    <div style="margin-top:16px;border-top:1px solid #111;padding-top:10px;">
-      <div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:6px;">
-        Cost Decomposition
-      </div>
-      ${data.layers.map(l => `
-        <div style="display:flex;justify-content:space-between;font-size:12px;">
-          <span style="color:#888;">${l.name}</span>
-          <span style="color:#fff;">$${l.value}</span>
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
