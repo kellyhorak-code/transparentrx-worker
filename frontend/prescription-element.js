@@ -5,67 +5,96 @@ class PrescriptionEconomics extends HTMLElement {
   }
 
   connectedCallback() {
-    this.shadowRoot.innerHTML = `
-      <div id="result"></div>
-    `;
+    this.shadowRoot.innerHTML = `<div id="result"></div>`;
   }
 
   renderTerminalV2(data) {
     const el = this.shadowRoot.getElementById("result");
 
-    const position =
+    const overpay = data.userPrice - data.truePrice.mid;
+    const percent = ((overpay / data.userPrice) * 100).toFixed(0);
+
+    const posMarket =
+      ((data.userPrice - data.min) / (data.max - data.min)) * 100;
+
+    const posForecast =
       ((data.userPrice - data.simulation.low) /
       (data.simulation.high - data.simulation.low)) * 100;
 
     el.innerHTML = `
-    <div style="font-family:Inter,sans-serif;color:#fff;padding:20px;background:#000">
+    <div style="font-family:JetBrains Mono,monospace;color:#00ffcc;
+      background:#000;padding:20px;line-height:1.5">
 
       <!-- POSITION -->
-      <div style="font-size:22px;font-weight:700;">
-        $${data.userPrice} → 
-        <span style="color:#4CFC0F">$${data.truePrice.mid}</span>
-      </div>
-
-      <div style="color:#ff4d4d;font-size:14px;margin-top:4px;">
-        Overpay: $${(data.userPrice - data.truePrice.mid).toFixed(2)}
+      <div style="border-bottom:1px solid #111;padding-bottom:10px;margin-bottom:10px;">
+        <div>YOU PAID        $${data.userPrice}</div>
+        <div>FAIR VALUE      $${data.truePrice.mid}</div>
+        <div style="color:#ff4d4d;">
+          STATUS          OVERPRICED (+${percent}%)
+        </div>
       </div>
 
       <!-- MARKET -->
-      <div style="margin-top:12px;font-size:12px;color:#aaa;">
-        Market Range: $${data.min} – $${data.max}
+      <div style="border-bottom:1px solid #111;padding-bottom:10px;margin-bottom:10px;">
+        <div style="color:#888;">MARKET RANGE</div>
+        <div>LOW      $${data.min}</div>
+        <div>MEDIAN   $${data.median}</div>
+        <div>HIGH     $${data.max}</div>
+
+        <div style="margin-top:6px;height:4px;
+          background:linear-gradient(90deg,#00ff88,#ffaa00,#ff4444);
+          position:relative;">
+          <div style="position:absolute;left:${posMarket}%;
+            width:2px;height:10px;background:white;top:-3px;"></div>
+        </div>
+      </div>
+
+      <!-- STRUCTURE -->
+      <div style="border-bottom:1px solid #111;padding-bottom:10px;margin-bottom:10px;">
+        <div style="color:#888;">PRICE BREAKDOWN</div>
+        ${data.layers.map(l => `
+          <div>
+            ${l.name.padEnd(20)} $${l.value}
+          </div>
+        `).join('')}
       </div>
 
       <!-- FORECAST -->
-      <div style="margin-top:16px;border-top:1px solid #111;padding-top:10px;">
-        <div style="font-size:11px;color:#666;">FORECAST (30D)</div>
+      <div style="border-bottom:1px solid #111;padding-bottom:10px;margin-bottom:10px;">
+        <div style="color:#888;">FORECAST (30D)</div>
+        <div>LOW       $${data.simulation.low}</div>
+        <div style="color:#4CFC0F;">EXPECTED  $${data.simulation.expected}</div>
+        <div>HIGH      $${data.simulation.high}</div>
 
-        <div style="display:flex;justify-content:space-between;font-size:12px;">
-          <span>$${data.simulation.low}</span>
-          <span style="color:#4CFC0F">$${data.simulation.expected}</span>
-          <span>$${data.simulation.high}</span>
+        <div style="margin-top:6px;height:4px;
+          background:linear-gradient(90deg,#00ff88,#ffaa00,#ff4444);
+          position:relative;">
+          <div style="position:absolute;left:${posForecast}%;
+            width:2px;height:10px;background:white;top:-3px;"></div>
         </div>
 
-        <div style="margin-top:6px;height:6px;
-          background:linear-gradient(90deg,#00ff88,#eab308,#ef4444);
-          border-radius:4px;position:relative;">
-
-          <div style="position:absolute;
-            left:${position}%;
-            top:-6px;width:2px;height:18px;background:white;">
-          </div>
-        </div>
-
-        <div style="font-size:12px;color:#aaa;margin-top:6px;">
-          ${data.userPrice > data.simulation.expected 
-            ? "Above expected future pricing"
-            : "Within expected range"}
+        <div style="margin-top:6px;color:#aaa;">
+          ${data.userPrice > data.simulation.expected
+            ? "ABOVE EXPECTED RANGE"
+            : "WITHIN EXPECTED RANGE"}
         </div>
       </div>
 
-      <!-- BEST OPTION -->
-      <div style="margin-top:16px;">
-        Best: ${data.bestPharmacy?.name} — 
-        <span style="color:#4CFC0F">$${data.bestPharmacy?.price}</span>
+      <!-- EXECUTION -->
+      <div>
+        <div style="color:#888;">EXECUTION</div>
+        <div>
+          ${data.bestPharmacy?.name} — 
+          <span style="color:#4CFC0F">$${data.bestPharmacy?.price}</span>
+        </div>
+
+        <div style="color:#aaa;">
+          Savings: $${data.arbitrage?.savings}
+        </div>
+
+        <div style="margin-top:6px;color:#4CFC0F;">
+          ACTION: SWITCH NOW
+        </div>
       </div>
 
     </div>
