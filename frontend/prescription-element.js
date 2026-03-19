@@ -59,6 +59,7 @@ class PrescriptionEconomics extends HTMLElement {
       );
       const data = await res.json();
 this.renderFullEconomics(data);
+this.renderLayers(data);
 }
 
 customElements.define('prescription-economics', PrescriptionEconomics);
@@ -71,5 +72,26 @@ formatRecommendation(type) {
     fair_price: "✅ You are paying a fair price"
   };
   return map[type] || "";
+}
+
+
+renderLayers(data) {
+  const container = this.shadowRoot.getElementById('premium-lock');
+
+  if (!data.layers) return;
+
+  container.innerHTML = `
+    <div style="margin-top:16px;border-top:1px solid #111;padding-top:10px;">
+      <div style="font-size:11px;color:#666;text-transform:uppercase;margin-bottom:6px;">
+        Cost Decomposition
+      </div>
+      ${data.layers.map(l => `
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span style="color:#888;">${l.name}</span>
+          <span style="color:#fff;">$${l.value}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
