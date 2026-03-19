@@ -58,70 +58,18 @@ class PrescriptionEconomics extends HTMLElement {
         "https://transparentrx-pricing.kellybhorak.workers.dev/api/search?q=" + encodeURIComponent(q)
       );
       const data = await res.json();
-
-      dropdown.innerHTML = data.map(d =>
-        `<div class="item" data='${JSON.stringify(d)}'>${d.display}</div>`
-      ).join('');
-
-      dropdown.querySelectorAll('.item').forEach(el => {
-        el.onclick = () => {
-          const d = JSON.parse(el.getAttribute('data'));
-          this.selected = d;
-          search.value = d.display;
-          dropdown.innerHTML = '';
-
-          // populate strengths
-          strength.innerHTML = d.strengths.map(s =>
-            `<option data-ndc="${s.ndc}">${s.strength}</option>`
-          ).join('');
-
-          this.selectedNdc = d.strengths[0]?.ndc || null;
-
-          strength.classList.remove('hidden');
-          price.classList.remove('hidden');
-          calc.classList.remove('hidden');
-        };
-      });
-    });
-
-    // STRENGTH CHANGE
-    strength.addEventListener('change', () => {
-      const opt = strength.options[strength.selectedIndex];
-      this.selectedNdc = opt.getAttribute('data-ndc');
-    });
-
-    // CALCULATE
-    calc.addEventListener('click', async () => {
-      const userPrice = parseFloat(price.value);
-      if (!this.selectedNdc || !userPrice) return;
-
-      const res = await fetch(
-        "https://transparentrx-pricing.kellybhorak.workers.dev/api/price",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ndc: this.selectedNdc,
-            userPrice,
-            quantity: 30,
-            dailyDosage: 1,
-            zip: "76102"
-          })
-        }
-      );
-
-      const data = await res.json();
-
-      result.classList.remove('hidden');
-      result.innerHTML = `
-        <div><b>TransDex:</b> $${data.truePrice?.mid}</div>
-        <div><b>You paid:</b> $${userPrice}</div>
-        <div><b>Monthly savings:</b> $${data.monthlySavings}</div>
-        <div><b>Best pharmacy:</b> ${data.bestPharmacy?.name} ($${data.bestPharmacy?.price})</div>
-        <div><b>Recommendation:</b> ${data.recommendation}</div>
-      `;
-    });
-  }
+this.renderFullEconomics(data);
 }
 
 customElements.define('prescription-economics', PrescriptionEconomics);
+
+// Clean recommendation text
+formatRecommendation(type) {
+  const map = {
+    switch_pharmacy: "⚠️ Switch pharmacies immediately",
+    shop_around: "🔍 Compare nearby pharmacies",
+    fair_price: "✅ You are paying a fair price"
+  };
+  return map[type] || "";
+}
+
