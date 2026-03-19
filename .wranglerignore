@@ -18,3 +18,7 @@ scraper-env/
 .git/
 ndc.zip
 *.zip
+node_modules/
+scraper-env/
+backups/
+.git/
