@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TransparentRx — Pricing Intelligence</title>
+
+  <!-- Basic SEO -->
+  <meta name="description" content="See what your prescription should actually cost. Detect overpayment instantly." />
+
+  <!-- Minimal styling (global only) -->
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 40px 16px;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 720px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      color: #4CFC0F;
+    }
+
+    .header p {
+      margin-top: 8px;
+      color: #888;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <div class="header">
+      <h1>TransparentRx™</h1>
+      <p>Know what your prescription should actually cost</p>
+    </div>
+
+    <!-- 🔥 Your Web Component -->
+    <prescription-economics></prescription-economics>
+
+  </div>
+
+  <!-- Load your component -->
+  <script src="./prescription-element.js"></script>
+
+</body>
+</html>
