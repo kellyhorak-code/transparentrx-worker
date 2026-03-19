@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TransparentRx - Pricing</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f9fafb;
+      display: flex;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      font-size: 36px;
+      color: #111;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #6b7280;
+      font-size: 18px;
+      margin-bottom: 40px;
+    }
+    .pricing-card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    .price {
+      font-size: 48px;
+      font-weight: 700;
+      color: #10b981;
+      margin: 20px 0;
+    }
+    .price small {
+      font-size: 16px;
+      font-weight: 400;
+      color: #6b7280;
+    }
+    .features {
+      text-align: left;
+      margin: 30px 0;
+    }
+    .feature {
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .feature:last-child {
+      border-bottom: none;
+    }
+    .feature:before {
+      content: "✓ ";
+      color: #10b981;
+      font-weight: 600;
+    }
+    button {
+      background: #10b981;
+      color: white;
+      border: none;
+      padding: 16px 40px;
+      border-radius: 30px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+    button:hover {
+      background: #059669;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+    }
+    .back-link {
+      margin-top: 20px;
+    }
+    .back-link a {
+      color: #6b7280;
+      text-decoration: none;
+    }
+    .back-link a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>TransparentRx Pro</h1>
+    <div class="subtitle">Unlock the full pricing picture</div>
+    
+    <div class="pricing-card">
+      <div class="price">$12<small>/month</small></div>
+      
+      <div class="features">
+        <div class="feature">Unlimited TruePrice™ calculations</div>
+        <div class="feature">See PBM spread and retail markup breakdown</div>
+        <div class="feature">Historical price tracking</div>
+        <div class="feature">Pharmacy comparison data</div>
+        <div class="feature">Email support</div>
+      </div>
+      
+      <button id="checkout-btn">Subscribe Now</button>
+    </div>
+    
+    <div class="back-link">
+      <a href="/">← Back to calculator</a>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('checkout-btn').addEventListener('click', async () => {
+      const email = localStorage.getItem('trx_email') || prompt('Enter your email:');
+      if (!email) return;
+
+      try {
+        const res = await fetch('https://transparentrx-pricing.kellybhorak.workers.dev/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            priceId: 'price_1T935yIJC2VDGIiy1iB1chRQ', // Your monthly price ID
+            customerEmail: email
+          })
+        });
+        
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          alert('Error: ' + (data.error || 'Checkout failed'));
+        }
+      } catch (err) {
+        alert('Failed to start checkout: ' + err.message);
+      }
+    });
+  </script>
+</body>
+</html>
