@@ -610,7 +610,8 @@ class PrescriptionEconomics extends HTMLElement {
     try {
       const res = await fetch(`https://transparentrx-pricing.kellybhorak.workers.dev/api/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
-      this.renderAutocomplete(data);
+      console.log("SEARCH RESULTS:", data);
+this.renderAutocomplete(data);
     } catch (err) {
       console.error('Search failed:', err);
     }
@@ -620,11 +621,13 @@ class PrescriptionEconomics extends HTMLElement {
     const dropdown = this.shadowRoot.getElementById('autocomplete');
 
     if (!drugs || drugs.length === 0) {
-      dropdown.innerHTML = '<div class="autocomplete-item">No results found</div>';
+      dropdown.style.display = "block";
+dropdown.innerHTML = "<div class="autocomplete-item">No results found</div>";
       return;
     }
 
-    dropdown.innerHTML = drugs.map(d => `
+    dropdown.style.display = "block";
+dropdown.innerHTML = drugs.map(d => `
       <div class="autocomplete-item" data-drug='${JSON.stringify(d)}'>
         ${d.display}
       </div>
@@ -638,7 +641,8 @@ class PrescriptionEconomics extends HTMLElement {
         this.selectedDrugData = data;
 
         this.shadowRoot.getElementById('drug-search').value = data.display;
-        dropdown.innerHTML = '';
+        dropdown.innerHTML = "";
+dropdown.style.display = "none";
 
         this.populateStrengths(data);
 
