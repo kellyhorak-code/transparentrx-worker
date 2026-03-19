@@ -10,3 +10,9 @@ drug-ndc-0001-of-0001.json
 *.sql
 *.csv
 *.json
+node_modules/
+*.zip
+*.tar.gz
+backups/
+scraper-env/
+.git/
