@@ -1,5 +1,6 @@
 
 import { Router } from 'itty-router'
+import { monteCarloPrice } from './quant/simulation'
 import Stripe from 'stripe'
 import { calculateTruePrice } from './algorithms/trueprice'
 import { calculateDistortionScore } from './algorithms/distortion'
@@ -485,7 +486,14 @@ try {
         ? (monthlySavings * 12) - (subscriptionCost * 12)
         : null
 
-    const response = {
+    const sim = monteCarloPrice(truePrice.trueMid, (timing && timing.volatility) ? timing.volatility : 0.2);
+
+const response = {
+      simulation: {
+        expected: Number(sim.expected.toFixed(2)),
+        low: Number(sim.low.toFixed(2)),
+        high: Number(sim.high.toFixed(2))
+      },
 
       ndc: drug.ndc_11,
 

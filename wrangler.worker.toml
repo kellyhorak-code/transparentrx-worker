@@ -1,0 +1,8 @@
+name = "transparentrx-pricing"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "transparentrx-ndc"
+database_id = "b37815f4-0005-478f-89e9-aa04b63d1b0d"
