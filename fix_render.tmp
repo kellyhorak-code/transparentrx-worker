@@ -1,0 +1,21 @@
+results.innerHTML = data.map(d => `
+  <div style="
+    padding:10px;
+    border-bottom:1px solid #111;
+    cursor:pointer;
+    background:#050505;
+  "
+  data-ndc="${d.ndc}">
+    ${d.name}
+  </div>
+`).join("")
+
+results.querySelectorAll("div").forEach(el => {
+  el.onclick = () => {
+    this.selectedNDC = el.dataset.ndc
+    input.value = el.innerText
+    results.innerHTML = ""
+
+    console.log("SELECTED:", this.selectedNDC)
+  }
+})

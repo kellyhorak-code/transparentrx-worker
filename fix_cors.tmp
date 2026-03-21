@@ -1,0 +1,7 @@
+function cors(res) {
+  const headers = new Headers(res.headers)
+  headers.set("Access-Control-Allow-Origin", "*")
+  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+  headers.set("Access-Control-Allow-Headers", "Content-Type")
+  return new Response(res.body, { ...res, headers })
+}

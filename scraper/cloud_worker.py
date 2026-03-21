@@ -10,7 +10,7 @@ from canonical_map import canonicalize
 
 from goodrx_scraper import scrape_goodrx
 from singlecare_scraper import scrape_singlecare
-from wellrx_scraper import scrape_wellrx
+from wellrx_scraper import scrape_singlecare as scrape_wellrx
 from costplus_scraper import scrape_costplus
 
 from concurrent.futures import ThreadPoolExecutor, as_completed

@@ -1,0 +1,8 @@
+SELECT
+  MIN(ndc_11) as ndc_11,
+  COALESCE(nonproprietary_name, proprietary_name) as name
+FROM ndc_master
+WHERE LOWER(nonproprietary_name) LIKE ?
+   OR LOWER(proprietary_name) LIKE ?
+GROUP BY name
+LIMIT 10

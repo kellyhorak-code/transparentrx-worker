@@ -1,0 +1,21 @@
+<script>
+(async () => {
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = params.get("session_id");
+
+  if (!sessionId) return;
+
+  const res = await fetch(
+    "https://transparentrx-pricing.kellybhorak.workers.dev/api/verify?session_id=" + sessionId
+  );
+
+  const data = await res.json();
+
+  if (data.premium) {
+    localStorage.setItem("trx_premium", "true");
+    document.body.innerHTML = "<h2>Premium Activated ✅</h2><p>You now have full access.</p>";
+  } else {
+    document.body.innerHTML = "<h2>Verification Failed</h2>";
+  }
+})();
+</script>

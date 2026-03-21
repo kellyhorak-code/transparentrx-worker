@@ -24,3 +24,5 @@ node_modules/
 __pycache__/
 *.pyc
 *.log
+cron.log
+node_modules/stripe

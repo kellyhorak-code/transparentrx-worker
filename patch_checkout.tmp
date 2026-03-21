@@ -1,0 +1,43 @@
+// =========================
+// STRIPE CHECKOUT (FORCED WORKING)
+// =========================
+if (url.pathname === "/api/checkout") {
+
+  try {
+
+    const body = new URLSearchParams({
+      "mode": "payment",
+      "success_url": "https://transparentrx-site.pages.dev/success",
+      "cancel_url": "https://transparentrx-site.pages.dev",
+
+      "line_items[0][price_data][currency]": "usd",
+      "line_items[0][price_data][product_data][name]": "TransparentRx Premium",
+      "line_items[0][price_data][unit_amount]": "1999",
+      "line_items[0][quantity]": "1"
+    });
+
+    const stripeRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: body.toString()
+    });
+
+    const raw = await stripeRes.text();
+
+    return new Response(raw, {
+      headers: { "Content-Type": "application/json", ...cors }
+    });
+
+  } catch (e) {
+    return new Response(JSON.stringify({
+      error: e.message,
+      hasKey: !!env.STRIPE_SECRET_KEY
+    }), {
+      status: 500,
+      headers: cors
+    });
+  }
+}

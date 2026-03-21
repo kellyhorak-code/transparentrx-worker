@@ -1,0 +1,5 @@
+      const json = JSON.parse(text);
+
+      return new Response(JSON.stringify({ url: json.url }), {
+        headers: { "Content-Type": "application/json", ...cors }
+      });
