@@ -130,7 +130,34 @@ router.post('/api/price', async (request: Request, env: Env) => {
       }
     }
 
+    // Use real retail percentiles if enough data exists
+    const drugNameForStats = (drug.nonproprietary_name || '').toLowerCase().split(' ')[0]
+    const statsRow = await env.DB.prepare(`
+      SELECT 
+        MIN(cash_price) as p_low,
+        AVG(cash_price) as p_mid,
+        MAX(cash_price) as p_high,
+        COUNT(*) as samples
+      FROM retail_prices
+      WHERE LOWER(drug_name) LIKE ?
+      AND quantity = ?
+      AND cash_price > 0
+      AND cash_price < 500
+    `).bind(`${drugNameForStats}%`, quantity).first()
+
     const tp = calculateTruePrice(drug, body.zip || '76102')
+
+    // Override with real data if 5+ samples
+    if (statsRow && Number(statsRow.samples) >= 5) {
+      const realLow = Number(statsRow.p_low)
+      const realMid = Number(statsRow.p_mid)
+      const realHigh = Number(statsRow.p_high)
+      if (realLow > 0 && realHigh > 0 && realHigh < 1000) {
+        tp.trueLow = realLow
+        tp.trueMid = realMid
+        tp.trueHigh = realHigh
+      }
+    }
 
     const monthlySavings = (userPrice - tp.trueMid) * dailyDosage
 
@@ -246,23 +273,25 @@ router.post('/api/price', async (request: Request, env: Env) => {
           max_tokens: 250,
           messages: [{
             role: 'system',
-            content: 'You are TransparentRx, a prescription pricing intelligence engine. Write a 100-150 word analysis that is specific, data-driven, and actionable. Never use generic filler. Reference the actual numbers. Be direct and helpful. Do not use bullet points.'
+            content: 'You are TransparentRx, a prescription pricing intelligence engine. Write a 200-250 word analysis that is specific, data-driven, and actionable. Reference every number provided. Cover: what the user paid vs fair market, the acquisition cost markup chain, the distortion score meaning, the best pharmacy option and exact savings, annual financial impact, and a clear action recommendation. Write in flowing paragraphs, no bullet points, no headers. Use precise dollar amounts throughout. Be direct, authoritative, and helpful like a Bloomberg terminal analyst.'
           }, {
             role: 'user',
-            content: `Analyze this prescription pricing data and write a personalized insight:
-Drug: ${promptData.drugName} ${promptData.strength}
-Quantity: ${promptData.quantity} tablets
-User paid: $${promptData.userPrice}
-Fair market price (TruePrice™ mid): $${promptData.truePrice.mid}
-Market low: $${promptData.truePrice.low} | Market high: $${promptData.truePrice.high}
-NADAC acquisition cost: $${promptData.nadacCost} per unit
-Distortion score: ${promptData.distortionScore}/100 (${promptData.distortionLabel})
-Verdict: ${promptData.verdict}
-Best pharmacy found: ${promptData.bestPharmacy} at $${promptData.bestPrice}
-Monthly savings opportunity: $${promptData.monthlySavings}
-Annual savings opportunity: $${promptData.annualSavings}
-ZIP code: ${promptData.zip}
-Data points: ${promptData.sampleSize} price observations`
+            content: `Generate a comprehensive pricing intelligence report for this prescription:
+
+DRUG: ${promptData.drugName} ${promptData.strength}
+QUANTITY: ${promptData.quantity} units
+USER PAID: $${promptData.userPrice}
+NADAC WHOLESALE COST: $${promptData.nadacCost}/unit ($${(promptData.nadacCost * promptData.quantity).toFixed(2)} total acquisition)
+TRUEPRICE™ RANGE: $${promptData.truePrice.low} (low) / $${promptData.truePrice.mid} (mid) / $${promptData.truePrice.high} (high)
+DISTORTION SCORE: ${promptData.distortionScore}/100 — ${promptData.distortionLabel}
+OVERPAYMENT VS MARKET MID: $${(promptData.userPrice - promptData.truePrice.mid).toFixed(2)} (${((promptData.userPrice - promptData.truePrice.mid) / promptData.truePrice.mid * 100).toFixed(0)}%)
+BEST PHARMACY: ${promptData.bestPharmacy} at $${promptData.bestPrice}
+MONTHLY SAVINGS IF SWITCHED: $${promptData.monthlySavings}
+ANNUAL SAVINGS IF SWITCHED: $${promptData.annualSavings}
+VERDICT: ${promptData.verdict}
+LOCATION: ZIP ${promptData.zip}
+LIVE PRICE OBSERVATIONS: ${promptData.sampleSize}
+DATA SOURCE: ${promptData.pharmacyCount > 0 ? 'Live retail scrape + NADAC' : 'NADAC model'}`
           }]
         })
       })
@@ -350,6 +379,13 @@ router.post('/api/retail-price', async (request: Request, env: any) => {
       return json({ error: 'missing_fields' }, 400)
     }
 
+    // Normalize pharmacy name to Title Case
+    const normalizePharmacy = (name: string) => {
+      return name.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()).trim()
+    }
+    const normalizedName = normalizePharmacy(pharmacy_name)
+    const normalizedChain = pharmacy_chain ? normalizePharmacy(pharmacy_chain) : normalizedName
+
     await env.DB.prepare(`
       INSERT INTO retail_prices (
         ndc, drug_name, strength, pharmacy_name, pharmacy_chain,
@@ -357,7 +393,7 @@ router.post('/api/retail-price', async (request: Request, env: any) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).bind(
       ndc || null, drug_name || null, strength || null,
-      pharmacy_name, pharmacy_chain || null,
+      normalizedName, normalizedChain || null,
       cash_price, coupon_price || cash_price,
       quantity || null, zip_code || null, source || null
     ).run()
