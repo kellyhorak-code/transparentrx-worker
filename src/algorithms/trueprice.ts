@@ -54,7 +54,8 @@ export function calculateTruePrice(
   else if (form.includes('inhaler')) formMultiplier = 1.3;
   else if (form.includes('liquid')) formMultiplier = 1.15;
 
-  const adjustedBase = baseCost * geoMultiplier * formMultiplier;
+  const quantity = drug.quantity || 30;
+  const adjustedBase = baseCost * quantity * geoMultiplier * formMultiplier;
   
   const trueLow = adjustedBase * 1.15;
   const trueMid = adjustedBase * 1.40;

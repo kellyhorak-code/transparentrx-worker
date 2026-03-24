@@ -4,7 +4,7 @@ function animateNumber(el,value){let start=0;const duration=600;const startTime=
 // prescription-element.js — TransparentRx v3.1
 // Upgrade trigger: fires 1.5s after first analysis completes — slide-up banner, non-blocking
 
-const API = 'https://transparentrx-pricing.kellybhorak.workers.dev';
+const API = 'https://transparentrx-worker.kellybhorak.workers.dev';
 
 function normalizeNdc(ndc) {
   return (ndc || '').replace(/\D/g, '').padStart(11, '0');
@@ -70,10 +70,50 @@ class PrescriptionEconomics extends HTMLElement {
     this.isPremium    = false;
     this.userEmail    = null;
     this.drugType     = 'generic';
+    this.activityFeed = [];
+    this.state = { activityIndex: 0 };
+  }
+
+  async loadActivity() {
+    try {
+      const res = await fetch("https://transparentrx-pricing.kellybhorak.workers.dev/api/activity");
+      const data = await res.json();
+
+      this.activityFeed = data.map(d => d.message);
+
+      if (!this.activityFeed.length) {
+        this.activityFeed = ["Initializing pricing intelligence..."];
+      }
+
+    } catch (e) {
+      this.activityFeed = ["Activity feed unavailable"];
+    }
+  }
+
+  startActivityTicker() {
+    setInterval(() => {
+      if (!this.activityFeed?.length) return;
+
+      this.state.activityIndex =
+        (this.state.activityIndex + 1) % this.activityFeed.length;
+
+      this.updateActivity();
+    }, 3000);
+  }
+
+  updateActivity() {
+    const activityMsg = this.activityFeed?.[this.state?.activityIndex];
+    if (activityMsg) {
+      const activityEl = this.shadowRoot?.getElementById('activityMessage');
+      if (activityEl) {
+        activityEl.textContent = activityMsg;
+      }
+    }
   }
 
   connectedCallback() {
-    this.demoUsed = localStorage.getItem('transparentrx_demo_used') === 'true';
+    this.loadActivity();
+    this.startActivityTicker();
     this.render();
     this.setupEventListeners();
   }
@@ -279,6 +319,18 @@ class PrescriptionEconomics extends HTMLElement {
           transition:color .2s; flex-shrink:0;
         }
         .ub-dismiss:hover { color:#666; }
+
+        /* Activity Feed */
+        .activity-feed {
+          background:rgba(76,252,15,.05);
+          border:1px solid rgba(76,252,15,.15);
+          border-radius:12px;
+          padding:.75rem 1rem;
+          margin-bottom:1rem;
+          font-size:.75rem;
+          color:#4CFC0F;
+          text-align:center;
+        }
 
         /* ══════════════════════════════════════
            ECONOMICS — Museum Grade
@@ -582,6 +634,9 @@ class PrescriptionEconomics extends HTMLElement {
 
             <!-- ═══ MAIN PANEL ═══ -->
             <div class="main-panel" id="mainPanel">
+
+              <!-- Activity Feed -->
+              <div class="activity-feed" id="activityMessage">Initializing pricing intelligence...</div>
 
               <!-- Initial state -->
               <div class="init" id="initV">

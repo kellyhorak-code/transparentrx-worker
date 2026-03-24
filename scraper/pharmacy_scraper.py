@@ -10,11 +10,11 @@ ALGOLIA_URL=f"https://{ALGOLIA_APP_ID.lower()}-dsn.algolia.net/1/indexes/drug/qu
 STRENGTHS_URL="https://api.buzzintegrations.com/private/services/v1/drugprice/bydrugnameid/bypharmacies"
 MULTICARD_URL="https://api.buzzintegrations.com/rxcompare/multicard/price"
 
-BEARER_TOKEN="YOUR_TOKEN_HERE"
+from cvs_scraper import get_token
 
 def buzz_headers():
     return {
-        "authorization": f"Bearer {BEARER_TOKEN}",
+        "authorization": f"Bearer {get_token()}",
         "content-type": "application/json",
         "x-api-key": BUZZ_API_KEY,
         "origin": "https://cvs.rxcompare.com",
@@ -36,108 +36,79 @@ def search_drug(drug):
         return None
     return str(hits[0]["drugNameID"])
 
-def get_strengths(drug_name_id,npi):
+def scrape(drug_name, strength, quantity, zip_code):
+    npi = "1831293638"
+    scraped_at = datetime.now(timezone.utc).isoformat()
 
-    r=requests.post(
-        STRENGTHS_URL,
-        headers=buzz_headers(),
-        json={
-            "messageCode":"nnIWk4P2",
-            "clientID":"RXCOMP-CVS",
-            "drugParameters":{"drugNameID":drug_name_id},
-            "location":{"npis":[npi]}
-        }
-    )
-
-    data=r.json()
-    drug_dict=data.get("data",{}).get("price",{}).get("drugDictionary",[])
-    strengths=[]
-
-    for drug in drug_dict:
-        for form in drug.get("forms",[]):
-            for s in form.get("strengths",[]):
-
-                strengths.append({
-                    "strength":s.get("strength"),
-                    "drugFormStrengthID":str(s.get("drugFormStrengthID")),
-                    "ndc":s.get("ndcRepresented"),
-                    "quantities":[q["quantity"] for q in s.get("quantities",[])]
-                })
-
-    return strengths
-
-def get_prices(drugFormStrengthID,qty,npi,zip_code):
-
-    r=requests.post(
-        MULTICARD_URL,
-        headers=buzz_headers(),
-        json={
-            "pharmacyNPI":npi,
-            "pharmacyZipCode":zip_code,
-            "drugFormStrengthID":drugFormStrengthID,
-            "drugQuantity":str(qty),
-            "messageCode":"?BIXy{^AHVY!e%yUXzsBF24KX(oN"
-        }
-    )
-
-    results=r.json().get("results",[])
-    prices=[]
-
-    for p in results:
-        provider=p.get("provider",{})
-        price=p.get("price")
-
-        if price:
-            prices.append({
-                "provider":provider.get("participantDisplayName","unknown"),
-                "price":float(price)
-            })
-
-    return prices
-
-def scrape(drug_name,strength,quantity,zip_code):
-
-    npi="1831293638"
-
-    drug_name_id=search_drug(drug_name)
+    drug_name_id = search_drug(drug_name)
     if not drug_name_id:
         return []
 
-    strengths=get_strengths(drug_name_id,npi)
+    r = requests.post(
+        STRENGTHS_URL,
+        headers=buzz_headers(),
+        json={
+            "messageCode": "nnIWk4P2",
+            "clientID": "RXCOMP-CVS",
+            "drugParameters": {"drugNameID": drug_name_id},
+            "location": {"npis": [npi]},
+            "options": {"includeDrugDictionary": True}
+        },
+        timeout=15
+    )
 
-    target=strength.lower()
-    if not strengths:
-        return []
+    data = r.json()
+    price_data = data.get("data", {}).get("price", {})
+    drug_dict = price_data.get("drugDictionary", [])
+    results = price_data.get("results", [])
 
-    match=strengths[0]
+    # Find best matching NDC from drugDictionary
+    matched_ndc = None
+    matched_strength = strength
+    target = strength.lower().replace(" ", "")
 
-    for s in strengths:
-        if s["strength"].lower()==target:
-            match=s
+    for drug in drug_dict:
+        for form in drug.get("forms", []):
+            for s in form.get("strengths", []):
+                s_norm = s.get("strength", "").lower().replace(" ", "")
+                if s_norm == target or target in s_norm:
+                    matched_ndc = s.get("ndcRepresented")
+                    matched_strength = s.get("strength", strength)
+                    break
 
-    prices=get_prices(match["drugFormStrengthID"],quantity,npi,zip_code)
+    records = []
 
-    scraped_at=datetime.now(timezone.utc).isoformat()
+    for result in results:
+        profile = result.get("pharmacyProfile", {})
+        pricing = result.get("pharmacyPricing", {})
+        pharmacy_name = profile.get("identifier", {}).get("name", "CVS PHARMACY")
+        ndc_selected = pricing.get("ndcSelected") or matched_ndc
+        day_supply = pricing.get("daySupply", [])
+        retail_price = pricing.get("estimatedRetailPrice")
 
-    records=[]
+        if day_supply:
+            price = float(day_supply[0].get("price", 0))
+        elif retail_price:
+            price = float(retail_price)
+        else:
+            continue
 
-    for p in prices:
+        if price <= 0:
+            continue
 
         records.append({
-            "drug_name":drug_name,
-            "strength":match["strength"],
-            "ndc":match["ndc"],
-            "quantity":quantity,
-            "zip_code":zip_code,
-            "pharmacy_name":f"CVS ({p['provider']})",
-            "pharmacy_chain":"cvs",
-            "cash_price":p["price"],
-            "coupon_price":p["price"],
-            "price_type":"coupon",
-            "source":"buzzintegrations",
-            "latitude":None,
-            "longitude":None,
-            "scraped_at":scraped_at
+            "drug_name": drug_name,
+            "strength": matched_strength,
+            "ndc": ndc_selected,
+            "quantity": quantity,
+            "zip_code": zip_code,
+            "pharmacy_name": pharmacy_name,
+            "pharmacy_chain": "cvs",
+            "cash_price": price,
+            "coupon_price": price,
+            "price_type": "coupon",
+            "source": "buzzintegrations",
+            "scraped_at": scraped_at
         })
 
     return records

@@ -1,3 +1,17 @@
-name = "transparentrx-site"
-pages_build_output_dir = "./frontend"
-compatibility_date = "2024-01-01"
+name = "transparentrx-worker"
+main = "src/index.ts"
+compatibility_date = "2024-03-21"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "transparentrx-db"
+database_id = "e25c38f6-ac4c-4900-be8d-80c4777664ea"
+
+[vars]
+ENVIRONMENT = "production"
+GEO_ENABLED = "true"
+AWP_FACTOR = "1.2"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "transparentrx-data"

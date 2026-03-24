@@ -1,6 +1,26 @@
 {
+  "name": "transparentrx-worker",
+  "version": "1.0.0",
+  "description": "TransparentRx Pricing API Worker",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production",
+    "migrate": "wrangler d1 execute transparentrx-db --file=./migrations/0001_create_tables.sql",
+    "migrate:local": "wrangler d1 execute transparentrx-db --local --file=./migrations/0001_create_tables.sql",
+    "db:list": "wrangler d1 execute transparentrx-db --command='.tables'",
+    "db:users": "wrangler d1 execute transparentrx-db --command='SELECT * FROM users LIMIT 10;'",
+    "db:activity": "wrangler d1 execute transparentrx-db --command='SELECT * FROM activity_feed ORDER BY created_at DESC LIMIT 10;'"
+  },
   "dependencies": {
-    "itty-router": "^5.0.23",
-    "openai": "^6.32.0"
+    "csv-parse": "^6.2.1",
+    "itty-router": "^4.0.23",
+    "stripe": "^14.16.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240320.0",
+    "typescript": "^5.4.2",
+    "wrangler": "^3.28.0"
   }
 }
