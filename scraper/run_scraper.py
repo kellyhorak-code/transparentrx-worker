@@ -85,7 +85,7 @@ def post_price(record):
         return False
 
 def main():
-    drugs = TIER_1_DAILY[:50]
+    drugs = TIER_1_DAILY
     log.info(f"[{WORKER_ID}] Starting — {len(drugs)} drugs x {len(QUANTITIES)} quantities")
 
     total = 0
