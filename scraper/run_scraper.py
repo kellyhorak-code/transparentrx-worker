@@ -93,6 +93,9 @@ def main():
         for qty in QUANTITIES:
             records = buzz_scrape(drug_name, strength, qty, "76102")
             for rec in records:
+                # Skip brand-only pricing (generics should be < $500)
+                if float(rec.get('cash_price', 0)) > 500:
+                    continue
                 if post_price(rec):
                     total += 1
             time.sleep(1)

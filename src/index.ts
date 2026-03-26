@@ -299,24 +299,31 @@ router.post('/api/price', async (request: Request, env: Env) => {
             content: 'You are TransparentRx, a prescription pricing intelligence engine. Write a 220-260 word analysis in flowing paragraphs with no bullet points or headers. Reference every data point provided. Cover: (1) what the user paid vs NADAC wholesale and TruePrice™ fair value, (2) the distortion score meaning and markup chain breakdown, (3) the best pharmacy option with exact dollar savings monthly and annually, (4) if isFirstTimeUser is true: end with a 2-sentence premium pitch explaining that at $12/month premium pays for itself in daysToBreakeven days based on this one drug alone, and that members get unlimited analyses across all medications. Be direct, authoritative, data-driven like a Bloomberg terminal analyst.'
           }, {
             role: 'user',
-            content: `Generate a comprehensive pricing intelligence report for this prescription:
+            content: `Generate a personalized prescription pricing intelligence report. Every report must be unique — vary sentence structure, lead with a different angle (savings opportunity, markup analysis, or coupon opportunity), and tailor the tone to the specific drug class and distortion level.
 
-IS FIRST TIME USER: ${promptData.isFirstUser}
-PREMIUM BREAK-EVEN: Day ${promptData.daysToBreakeven} of month 1 (at $12/mo premium)
-DRUG: ${promptData.drugName} ${promptData.strength}
-QUANTITY: ${promptData.quantity} units
-USER PAID: $${promptData.userPrice}
-NADAC WHOLESALE COST: $${promptData.nadacCost}/unit ($${(promptData.nadacCost * promptData.quantity).toFixed(2)} total acquisition)
-TRUEPRICE™ RANGE: $${promptData.truePrice.low} (low) / $${promptData.truePrice.mid} (mid) / $${promptData.truePrice.high} (high)
-DISTORTION SCORE: ${promptData.distortionScore}/100 — ${promptData.distortionLabel}
-OVERPAYMENT VS MARKET MID: $${(promptData.userPrice - promptData.truePrice.mid).toFixed(2)} (${((promptData.userPrice - promptData.truePrice.mid) / promptData.truePrice.mid * 100).toFixed(0)}%)
-BEST PHARMACY: ${promptData.bestPharmacy} at $${promptData.bestPrice}
-MONTHLY SAVINGS IF SWITCHED: $${promptData.monthlySavings}
-ANNUAL SAVINGS IF SWITCHED: $${promptData.annualSavings}
-VERDICT: ${promptData.verdict}
-LOCATION: ZIP ${promptData.zip}
-LIVE PRICE OBSERVATIONS: ${promptData.sampleSize}
-DATA SOURCE: ${promptData.pharmacyCount > 0 ? 'Live retail scrape + NADAC' : 'NADAC model'}`
+PATIENT DATA:
+- Drug: ${promptData.drugName} ${promptData.strength}, ${promptData.quantity} units
+- Location: ZIP ${promptData.zip}
+- Price Paid: $${promptData.userPrice}
+- Pharmacy: ${promptData.bestPharmacy}
+
+PRICING INTELLIGENCE:
+- NADAC Wholesale: $${promptData.nadacCost}/unit ($${(promptData.nadacCost * promptData.quantity).toFixed(2)} total)
+- TruePrice™ Range: $${promptData.truePrice.low} – $${promptData.truePrice.high} (mid: $${promptData.truePrice.mid})
+- Distortion Score: ${promptData.distortionScore}/100 (${promptData.distortionLabel})
+- Overpayment vs fair market: $${(promptData.userPrice - promptData.truePrice.mid).toFixed(2)} (${((promptData.userPrice - promptData.truePrice.mid) / Math.max(promptData.truePrice.mid, 0.01) * 100).toFixed(0)}%)
+- Best pharmacy option: ${promptData.bestPharmacy} at $${promptData.bestPrice}
+- Monthly savings if switched: $${promptData.monthlySavings}
+- Annual savings if switched: $${promptData.annualSavings}
+
+COUPON CARD OPTIONS:
+${promptData.couponSummary}
+
+CONTEXT:
+- Live price observations: ${promptData.sampleSize}
+- Data source: ${promptData.pharmacyCount > 0 ? 'Live retail scrape + NADAC' : 'NADAC model estimate'}
+- Verdict: ${promptData.verdict}
+${promptData.isFirstUser ? `- FIRST TIME USER: End with 2 sentences about premium membership — at $12/mo it pays for itself in ${promptData.daysToBreakeven} days based on this drug alone, and members get unlimited analyses across all medications.` : ''}`
           }]
         })
       })
@@ -403,6 +410,11 @@ router.post('/api/retail-price', async (request: Request, env: any) => {
 
     if (!pharmacy_name || !cash_price) {
       return json({ error: 'missing_fields' }, 400)
+    }
+
+    // Reject clearly bad prices
+    if (cash_price > 500 || cash_price < 0.01) {
+      return json({ error: 'price_out_of_range', price: cash_price }, 400)
     }
 
     // Normalize pharmacy name to Title Case
