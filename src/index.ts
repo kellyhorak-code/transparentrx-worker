@@ -169,20 +169,19 @@ router.post('/api/price', async (request: Request, env: Env) => {
       dataFreshness: drug.last_updated ? 0.9 : 0.5
     })
 
+    let couponOptions: any[] = []
+
     // Pull real retail prices from DB
     const drugNameLower = (drug.nonproprietary_name || drug.proprietary_name || '').toLowerCase().split(' ')[0]
     const retailRows = await env.DB.prepare(`
-      SELECT pharmacy_name, pharmacy_chain,
-             MIN(cash_price) as cash_price,
-             MIN(coupon_price) as coupon_price,
-             zip_code, source
+      SELECT pharmacy_name, pharmacy_chain, MIN(cash_price) as cash_price, MIN(coupon_price) as coupon_price, zip_code, source
       FROM retail_prices
       WHERE (ndc = ? OR LOWER(drug_name) LIKE ?)
       AND quantity = ?
       AND cash_price > 0
-      GROUP BY pharmacy_name, zip_code
+      GROUP BY pharmacy_name, zip_code, source
       ORDER BY cash_price ASC
-      LIMIT 20
+      LIMIT 50
     `).bind(ndc, `${drugNameLower}%`, quantity).all()
 
     const retailPrices = retailRows?.results || []
@@ -216,6 +215,30 @@ router.post('/api/price', async (request: Request, env: Env) => {
       bestPharmacy = deduped[0].pharmacy_name
       bestPrice = Number(Number(deduped[0].cash_price).toFixed(2))
       sampleSize = deduped.length
+
+      // Build coupon options grouped by pharmacy+source (deduplicated)
+      const couponMap = new Map()
+      retailPrices.forEach((r: any) => {
+        const src = r.source || 'buzzintegrations'
+        if (src === 'buzzintegrations') return
+        const chain = (r.pharmacy_chain || r.pharmacy_name || '').toLowerCase()
+        if (!couponMap.has(chain)) couponMap.set(chain, new Map())
+        const srcMap = couponMap.get(chain)
+        // Keep lowest price per provider
+        if (!srcMap.has(src) || r.cash_price < srcMap.get(src).price) {
+          srcMap.set(src, {
+            provider: src,
+            pharmacy: r.pharmacy_name,
+            price: Number(Number(r.cash_price).toFixed(2)),
+            zip: r.zip_code
+          })
+        }
+      })
+      couponOptions = Array.from(couponMap.entries()).map(([chain, srcMap]: any) => ({
+        pharmacy: Array.from(srcMap.values())[0].pharmacy,
+        chain,
+        offers: Array.from(srcMap.values()).sort((a: any, b: any) => a.price - b.price)
+      }))
     } else {
       ranking = [
         { name: "Lowest Observed", price: Number(tp.trueLow.toFixed(2)) },
@@ -339,6 +362,7 @@ DATA SOURCE: ${promptData.pharmacyCount > 0 ? 'Live retail scrape + NADAC' : 'NA
       layers,
       insight,
       ranking,
+      couponOptions,
       sampleSize,
 
       dataSource: retailPrices.length > 0 ? 'live_retail' : 'nadac_model'
