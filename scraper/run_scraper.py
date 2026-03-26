@@ -24,18 +24,6 @@ ZIPS = ["76102","10001","75201","60601","90001","33101","98101","30301","85001",
 QUANTITIES = [30, 90]
 
 # Multiple pharmacy NPIs for geographic spread
-PHARMACY_NPIS = [
-    {"npi": "1831293638", "name": "CVS PHARMACY",      "chain": "cvs",       "zip": "76102"},
-    {"npi": "1598009375", "name": "WALMART PHARMACY",  "chain": "walmart",   "zip": "76105"},
-    {"npi": "1831116946", "name": "WALMART PHARMACY",  "chain": "walmart",   "zip": "75204"},
-    {"npi": "1528317344", "name": "WALMART PHARMACY",  "chain": "walmart",   "zip": "77007"},
-    {"npi": "1568489615", "name": "WALMART PHARMACY",  "chain": "walmart",   "zip": "78213"},
-    {"npi": "1699792853", "name": "WALMART PHARMACY",  "chain": "walmart",   "zip": "78704"},
-    {"npi": "1124441399", "name": "WALMART PHARMACY",  "chain": "walmart",   "zip": "90280"},
-    {"npi": "1326042061", "name": "CVS PHARMACY",      "chain": "cvs",       "zip": "75201"},
-    {"npi": "1578557180", "name": "CVS PHARMACY",      "chain": "cvs",       "zip": "77001"},
-    {"npi": "1285628441", "name": "CVS PHARMACY",      "chain": "cvs",       "zip": "10001"},
-]
 
 def scrape_pharmacy(drug_name, strength, quantity, zip_code, pharmacy):
     try:
@@ -98,17 +86,16 @@ def post_price(record):
 
 def main():
     drugs = TIER_1_DAILY[:50]
-    log.info(f"[{WORKER_ID}] Starting — {len(drugs)} drugs x {len(PHARMACY_NPIS)} pharmacies x {len(QUANTITIES)} quantities")
+    log.info(f"[{WORKER_ID}] Starting — {len(drugs)} drugs x {len(QUANTITIES)} quantities")
 
     total = 0
     for drug_name, strength in drugs:
-        for pharmacy in PHARMACY_NPIS:
-            for qty in QUANTITIES:
-                records = scrape_pharmacy(drug_name, strength, qty, pharmacy["zip"], pharmacy)
-                for rec in records:
-                    if post_price(rec):
-                        total += 1
-                time.sleep(1)
+        for qty in QUANTITIES:
+            records = buzz_scrape(drug_name, strength, qty, "76102")
+            for rec in records:
+                if post_price(rec):
+                    total += 1
+            time.sleep(1)
         log.info(f"[{WORKER_ID}] {drug_name}: {total} total inserted so far")
 
     log.info(f"[{WORKER_ID}] Done. Total inserted: {total}")

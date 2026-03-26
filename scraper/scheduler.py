@@ -31,7 +31,7 @@ def run(tier: str):
         ["python", "generate_scrape_jobs.py", tier],
         check=True
     )
-    print(f"[{now}] Scheduler: {tier} jobs queued")
+    print(f"[{now}] Scheduler: {tier} jobs queued") 
 
 if __name__ == "__main__":
     tier = sys.argv[1] if len(sys.argv) > 1 else None

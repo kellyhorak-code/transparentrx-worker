@@ -225,7 +225,7 @@ router.post('/api/price', async (request: Request, env: Env) => {
     }
 
     const savings = Number((userPrice - bestPrice).toFixed(2))
-    const monthlySavingsFinal = Number(((userPrice - tp.trueMid) * dailyDosage).toFixed(2))
+    const monthlySavingsFinal = Number((userPrice - bestPrice).toFixed(2))
 
     // Price layers from algorithm
     const layers = tp.layers || []
@@ -270,14 +270,16 @@ router.post('/api/price', async (request: Request, env: Env) => {
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
-          max_tokens: 250,
+          max_tokens: 400,
           messages: [{
             role: 'system',
-            content: 'You are TransparentRx, a prescription pricing intelligence engine. Write a 200-250 word analysis that is specific, data-driven, and actionable. Reference every number provided. Cover: what the user paid vs fair market, the acquisition cost markup chain, the distortion score meaning, the best pharmacy option and exact savings, annual financial impact, and a clear action recommendation. Write in flowing paragraphs, no bullet points, no headers. Use precise dollar amounts throughout. Be direct, authoritative, and helpful like a Bloomberg terminal analyst.'
+            content: 'You are TransparentRx, a prescription pricing intelligence engine. Write a 220-260 word analysis in flowing paragraphs with no bullet points or headers. Reference every data point provided. Cover: (1) what the user paid vs NADAC wholesale and TruePrice™ fair value, (2) the distortion score meaning and markup chain breakdown, (3) the best pharmacy option with exact dollar savings monthly and annually, (4) if isFirstTimeUser is true: end with a 2-sentence premium pitch explaining that at $12/month premium pays for itself in daysToBreakeven days based on this one drug alone, and that members get unlimited analyses across all medications. Be direct, authoritative, data-driven like a Bloomberg terminal analyst.'
           }, {
             role: 'user',
             content: `Generate a comprehensive pricing intelligence report for this prescription:
 
+IS FIRST TIME USER: ${promptData.isFirstUser}
+PREMIUM BREAK-EVEN: Day ${promptData.daysToBreakeven} of month 1 (at $12/mo premium)
 DRUG: ${promptData.drugName} ${promptData.strength}
 QUANTITY: ${promptData.quantity} units
 USER PAID: $${promptData.userPrice}
