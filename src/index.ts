@@ -79,20 +79,39 @@ router.post('/api/price', async (request: Request, env: Env) => {
   try {
     const body = await request.json()
 
-    const ndc = body.ndc
+    const ndc = body.ndc || ''
     const userPrice = Number(body.userPrice || 0)
+    const insuranceCopay = Number(body.insuranceCopay || 0)
+    const effectivePrice = insuranceCopay > 0 ? Math.min(userPrice, insuranceCopay) : userPrice
     const dailyDosage = Number(body.dailyDosage || 1)
     const quantity = Number(body.quantity || 30)
+    const bodyDrugName = (body.drug || '').toLowerCase().trim()
 
-    if (!ndc) return json({ error: 'missing_ndc' }, 400)
+    if (!userPrice) return json({ error: 'missing_price' }, 400)
+    if (!bodyDrugName && !ndc) return json({ error: 'missing_drug' }, 400)
 
-    const drugRow = await env.DB.prepare(`
-      SELECT * FROM ndc_master WHERE ndc_11 = ?
-    `).bind(ndc).first()
+    // NDC lookup — optional, fall back to drug name
+    let drugRow: any = null
+    if (ndc) {
+      drugRow = await env.DB.prepare(
+        'SELECT * FROM ndc_master WHERE ndc_11 = ?'
+      ).bind(ndc).first()
+    }
+    if (!drugRow && bodyDrugName) {
+      drugRow = await env.DB.prepare(
+        'SELECT * FROM ndc_master WHERE LOWER(ndc_description) LIKE ? ORDER BY ndc_11 ASC LIMIT 1'
+      ).bind(bodyDrugName.split(' ')[0] + '%').first()
+    }
 
-    if (!drugRow) return json({ error: 'ndc_not_found' }, 404)
-
-    const drug: any = { ...drugRow }
+    // Synthetic fallback so analysis always runs
+    const drug: any = drugRow ? { ...drugRow } : {
+      nonproprietary_name: body.drug || '',
+      proprietary_name: body.drug || '',
+      ndc_description: body.drug || '',
+      strength: body.strength || '',
+      nadac_price: 0,
+      last_updated: null
+    }
 
     let nadacRow = await env.DB.prepare(`
       SELECT nadac_per_unit FROM nadac_prices WHERE ndc = ?
@@ -280,8 +299,8 @@ router.post('/api/price', async (request: Request, env: Env) => {
       ]
     }
 
-    const savings = Number((userPrice - bestPrice).toFixed(2))
-    const monthlySavingsFinal = Number((userPrice - bestPrice).toFixed(2))
+    const savings = Number((effectivePrice - bestPrice).toFixed(2))
+    const monthlySavingsFinal = Math.max(0, Number((effectivePrice - bestPrice).toFixed(2)))
 
     const distortionScore = calculateDistortionScore({
       userPrice,
@@ -384,7 +403,7 @@ CONTEXT:
 - Live price observations: ${promptData.sampleSize}
 - Data source: ${promptData.pharmacyCount > 0 ? 'Live retail scrape + NADAC' : 'NADAC model estimate'}
 - Verdict: ${promptData.verdict}
-${promptData.isFirstUser && promptData.daysToBreakeven ? `- IMPORTANT: End with exactly 2 sentences about premium membership. State that at $12/mo the membership pays for itself in ${promptData.daysToBreakeven} days based on this drug alone, and that members get unlimited analyses across all medications. Do not estimate or calculate your own break-even — use only the number provided.` : '- Do not mention premium membership or pricing plans in this analysis.'}`
+${promptData.isFirstUser && promptData.daysToBreakeven ? `- MANDATORY FINAL 2 SENTENCES ONLY: The premium membership at $12/mo pays for itself in exactly ${promptData.daysToBreakeven} days based on this drug alone. Members receive unlimited analyses across all medications. Use ONLY this break-even number — do not calculate your own.` : `- STRICT RULE: Do NOT mention premium membership, $12/month, RxPass, or any subscription pricing anywhere in this analysis. The patient saves less than $12/month so membership does not pay for itself.`}`
           }]
         })
       })
