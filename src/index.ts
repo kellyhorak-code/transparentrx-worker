@@ -303,8 +303,9 @@ router.post('/api/price', async (request: Request, env: Env) => {
         zip: body.zip || '76102',
         pharmacyCount: retailPrices.length,
         couponSummary,
+        userPharmacy: body.userPharmacy || 'their current pharmacy',
         isFirstUser: daysToBreakeven !== null,
-        daysToBreakeven: daysToBreakeven || 'N/A'
+        daysToBreakeven: daysToBreakeven || null
       }
 
       const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -326,8 +327,7 @@ router.post('/api/price', async (request: Request, env: Env) => {
 PATIENT DATA:
 - Drug: ${promptData.drugName} ${promptData.strength}, ${promptData.quantity} units
 - Location: ZIP ${promptData.zip}
-- Price Paid: $${promptData.userPrice}
-- Pharmacy: ${promptData.bestPharmacy}
+- Price Paid: $${promptData.userPrice} at ${promptData.userPharmacy}
 
 PRICING INTELLIGENCE:
 - NADAC Wholesale: $${promptData.nadacCost}/unit ($${(promptData.nadacCost * promptData.quantity).toFixed(2)} total)
@@ -345,7 +345,7 @@ CONTEXT:
 - Live price observations: ${promptData.sampleSize}
 - Data source: ${promptData.pharmacyCount > 0 ? 'Live retail scrape + NADAC' : 'NADAC model estimate'}
 - Verdict: ${promptData.verdict}
-${promptData.isFirstUser ? `- FIRST TIME USER: End with 2 sentences about premium membership — at $12/mo it pays for itself in ${promptData.daysToBreakeven} days based on this drug alone, and members get unlimited analyses across all medications.` : ''}`
+${promptData.isFirstUser && promptData.daysToBreakeven ? `- IMPORTANT: End with exactly 2 sentences about premium membership. State that at $12/mo the membership pays for itself in ${promptData.daysToBreakeven} days based on this drug alone, and that members get unlimited analyses across all medications. Do not estimate or calculate your own break-even — use only the number provided.` : '- Do not mention premium membership or pricing plans in this analysis.'}`
           }]
         })
       })
