@@ -161,13 +161,7 @@ router.post('/api/price', async (request: Request, env: Env) => {
 
     const monthlySavings = (userPrice - tp.trueMid) * dailyDosage
 
-    const distortionScore = calculateDistortionScore({
-      userPrice,
-      trueMid: tp.trueMid,
-      trueLow: tp.trueLow,
-      trueHigh: tp.trueHigh,
-      dataFreshness: drug.last_updated ? 0.9 : 0.5
-    })
+    // distortionScore calculated below after bestPrice/sampleSize are known
 
     let couponOptions: any[] = []
 
@@ -250,6 +244,17 @@ router.post('/api/price', async (request: Request, env: Env) => {
     const savings = Number((userPrice - bestPrice).toFixed(2))
     const monthlySavingsFinal = Number((userPrice - bestPrice).toFixed(2))
 
+    const distortionScore = calculateDistortionScore({
+      userPrice,
+      trueMid: tp.trueMid,
+      trueLow: tp.trueLow,
+      trueHigh: tp.trueHigh,
+      dataFreshness: drug.last_updated ? 0.9 : 0.5,
+      bestCashPrice: bestPrice,
+      sampleSize,
+      pharmacyCount: retailPrices.length
+    })
+
     // Price layers from algorithm
     const layers = tp.layers || []
 
@@ -259,9 +264,23 @@ router.post('/api/price', async (request: Request, env: Env) => {
                       distortionScore <= 70 ? 'significantly overpriced' :
                       'extreme price distortion'
 
-    const verdictText = userPrice > tp.trueHigh ? 'strong case to switch pharmacy immediately' :
-                        userPrice > tp.trueMid  ? 'worth shopping around for better pricing' :
+    const pctAboveBest = bestPrice > 0 ? ((userPrice - bestPrice) / bestPrice) * 100 : 0
+    const verdictText = pctAboveBest > 50 ? 'strong case to switch pharmacy immediately' :
+                        pctAboveBest > 15 ? 'worth shopping around for better pricing' :
                         'near the market low — fair price'
+
+    // Build coupon summary string for OpenAI prompt
+    const couponSummary = couponOptions.length > 0
+      ? couponOptions.map((c: any) =>
+          `${c.pharmacy}: ${c.offers.map((o: any) => `${o.provider} $${o.price.toFixed(2)}`).join(', ')}`
+        ).join(' | ')
+      : 'No coupon options available'
+
+    // Break-even calculation for premium pitch
+    const premiumMonthly = 12
+    const daysToBreakeven = monthlySavingsFinal >= premiumMonthly
+      ? Math.round((premiumMonthly / monthlySavingsFinal) * 30)
+      : null
 
     // Generate dynamic AI insight via OpenAI
     let insight = ''
@@ -282,7 +301,10 @@ router.post('/api/price', async (request: Request, env: Env) => {
         nadacCost: Number((drug.nadac_price || 0).toFixed(4)),
         sampleSize,
         zip: body.zip || '76102',
-        pharmacyCount: retailPrices.length
+        pharmacyCount: retailPrices.length,
+        couponSummary,
+        isFirstUser: daysToBreakeven !== null,
+        daysToBreakeven: daysToBreakeven || 'N/A'
       }
 
       const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
