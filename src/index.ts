@@ -98,9 +98,26 @@ router.post('/api/price', async (request: Request, env: Env) => {
       ).bind(ndc).first()
     }
     if (!drugRow && bodyDrugName) {
-      drugRow = await env.DB.prepare(
-        'SELECT * FROM ndc_master WHERE LOWER(ndc_description) LIKE ? ORDER BY ndc_11 ASC LIMIT 1'
+      // ndc_master doesn't have ndc_description — look up via nadac_prices then join
+      const nadacRow: any = await env.DB.prepare(
+        'SELECT ndc, ndc_description, nadac_per_unit FROM nadac_prices WHERE LOWER(ndc_description) LIKE ? AND nadac_per_unit > 0 ORDER BY nadac_per_unit ASC LIMIT 1'
       ).bind(bodyDrugName.split(' ')[0] + '%').first()
+      if (nadacRow?.ndc) {
+        drugRow = await env.DB.prepare(
+          'SELECT * FROM ndc_master WHERE ndc_11 = ? LIMIT 1'
+        ).bind(nadacRow.ndc).first()
+        if (!drugRow) {
+          // Build synthetic drug row from nadac data
+          drugRow = {
+            nonproprietary_name: nadacRow.ndc_description || body.drug,
+            proprietary_name: nadacRow.ndc_description || body.drug,
+            ndc_description: nadacRow.ndc_description || body.drug,
+            strength: body.strength || '',
+            nadac_price: nadacRow.nadac_per_unit || 0,
+            last_updated: null
+          }
+        }
+      }
     }
 
     // Synthetic fallback so analysis always runs
