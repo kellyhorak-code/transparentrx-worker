@@ -180,14 +180,53 @@ router.post('/api/price', async (request: Request, env: Env) => {
 
     const retailPrices = retailRows?.results || []
 
+    // Fetch Cost Plus Drugs price for this drug
+    let costPlusRecord: any = null
+    try {
+      const drugNameForCP = (drug.nonproprietary_name || drug.proprietary_name || '').toLowerCase().replace(/\s+/g, '+')
+      const cpRes = await fetch(
+        `https://us-central1-costplusdrugs-publicapi.cloudfunctions.net/main?medication_name=${encodeURIComponent(drug.nonproprietary_name || drug.proprietary_name || '')}&quantity_units=${quantity}`,
+        { headers: { 'Accept': 'application/json' } }
+      )
+      if (cpRes.ok) {
+        const cpData: any = await cpRes.json()
+        const cpResults = cpData?.results || []
+        // Match on strength if possible
+        const strengthNorm = (body.strength || '').toLowerCase().replace(/\s+/g, '')
+        const matched = cpResults.find((r: any) =>
+          r.strength && r.strength.toLowerCase().replace(/\s+/g, '') === strengthNorm
+        ) || cpResults[0]
+        if (matched && matched.requested_quote) {
+          const cpPrice = parseFloat(matched.requested_quote.replace('$', ''))
+          if (cpPrice > 0 && cpPrice < 500) {
+            costPlusRecord = {
+              pharmacy_name: 'Cost Plus Drugs',
+              pharmacy_chain: 'costplus',
+              cash_price: cpPrice,
+              coupon_price: cpPrice,
+              zip_code: 'nationwide',
+              source: 'costplusdrugs'
+            }
+          }
+        }
+      }
+    } catch (cpErr: any) {
+      console.error('Cost Plus API error:', cpErr.message)
+    }
+
+    // Merge Cost Plus into retail prices if found
+    const allRetailPrices = costPlusRecord
+      ? [...retailPrices, costPlusRecord]
+      : retailPrices
+
     // Build pharmacy ranking from real data or fallback to algorithm
     let ranking: any[]
     let bestPharmacy = "Lowest Observed Option"
     let bestPrice = Number(tp.trueLow.toFixed(2))
     let sampleSize = 3
 
-    if (retailPrices.length > 0) {
-      const sorted = [...retailPrices].sort((a: any, b: any) => a.cash_price - b.cash_price)
+    if (allRetailPrices.length > 0) {
+      const sorted = [...allRetailPrices].sort((a: any, b: any) => a.cash_price - b.cash_price)
       // Deduplicate by pharmacy name + zip
       // Deduplicate by chain — keep lowest price per chain
       const chainBest = new Map()
@@ -301,7 +340,7 @@ router.post('/api/price', async (request: Request, env: Env) => {
         nadacCost: Number((drug.nadac_price || 0).toFixed(4)),
         sampleSize,
         zip: body.zip || '76102',
-        pharmacyCount: retailPrices.length,
+        pharmacyCount: allRetailPrices.length,
         couponSummary,
         userPharmacy: body.userPharmacy || 'their current pharmacy',
         isFirstUser: daysToBreakeven !== null,
