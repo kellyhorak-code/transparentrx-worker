@@ -12,12 +12,42 @@ STRENGTHS_URL="https://api.buzzintegrations.com/private/services/v1/drugprice/by
 MULTICARD_URL="https://api.buzzintegrations.com/rxcompare/multicard/price"
 
 PHARMACY_CONFIGS = [
+    # Original Fort Worth / DFW core
     {"npi": "1831293638", "ncpdp": "4580747", "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "76102"},
     {"npi": "1326042061", "ncpdp": "5572871", "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "75201"},
     {"npi": "1578557180", "ncpdp": "5571985", "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "77001"},
     {"npi": "1598009375", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "76105"},
     {"npi": "1831116946", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "75204"},
     {"npi": "1528317344", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "77007"},
+    # High-density ZIP expansion
+    {"npi": "1073605705", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "08701"},
+    {"npi": "1508960329", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "77449"},
+    {"npi": "1215475736", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "77449"},
+    {"npi": "1841394657", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "78660"},
+    {"npi": "1114051257", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "78660"},
+    {"npi": "1346344173", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "77433"},
+    {"npi": "1992746861", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "60629"},
+    {"npi": "1013011824", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "77494"},
+    {"npi": "1568997427", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "79936"},
+    {"npi": "1811916828", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "79936"},
+    {"npi": "1396849139", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "11385"},
+    {"npi": "1376647206", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "30044"},
+    {"npi": "1265459507", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "30044"},
+    {"npi": "1396842795", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "77573"},
+    {"npi": "1932585130", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "77573"},
+    {"npi": "1851495642", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "78130"},
+    {"npi": "1295753085", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "78130"},
+    {"npi": "1265536015", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "11219"},
+    {"npi": "1780002691", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "77479"},
+    {"npi": "1174627004", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "30043"},
+    {"npi": "1104920990", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "78666"},
+    {"npi": "1649297821", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "78666"},
+    {"npi": "1992182166", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "75035"},
+    {"npi": "1902315666", "ncpdp": None,       "name": "Walmart Pharmacy", "chain": "walmart", "zip": "75035"},
+    {"npi": "1992727697", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "91911"},
+    {"npi": "1376647040", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "22193"},
+    {"npi": "1093737603", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "95823"},
+    {"npi": "1417807769", "ncpdp": None,       "name": "CVS Pharmacy",     "chain": "cvs",     "zip": "11233"},
 ]
 
 def buzz_headers():
@@ -31,14 +61,19 @@ def buzz_headers():
     }
 
 def search_drug(drug):
-    r = requests.post(ALGOLIA_URL, headers={
-        "x-algolia-api-key": ALGOLIA_API_KEY,
-        "x-algolia-application-id": ALGOLIA_APP_ID
-    }, json={"query": drug})
-    hits = r.json().get("hits", [])
-    if not hits:
+    try:
+        r = requests.post(ALGOLIA_URL, headers={
+            "x-algolia-api-key": ALGOLIA_API_KEY,
+            "x-algolia-application-id": ALGOLIA_APP_ID
+        }, json={"query": drug}, timeout=10)
+        hits = r.json().get("hits", [])
+        if not hits:
+            return None
+        return str(hits[0]["drugNameID"])
+    except Exception as e:
+        import logging
+        logging.warning(f"Algolia search failed for {drug}: {e}")
         return None
-    return str(hits[0]["drugNameID"])
 
 _drug_id_cache = {}
 

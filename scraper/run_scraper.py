@@ -78,27 +78,31 @@ def scrape_pharmacy(drug_name, strength, quantity, zip_code, pharmacy):
 
 def post_price(record):
     try:
-        r = requests.post(WORKER_URL + "/api/retail-price", json=record, timeout=10)
+        r = requests.post(WORKER_URL + "/api/retail-price", json=record, timeout=30)
         return r.status_code == 200
     except Exception as e:
         log.warning(f"POST error: {e}")
         return False
 
 def main():
+    from pharmacy_scraper import PHARMACY_CONFIGS
     drugs = TIER_1_DAILY
-    log.info(f"[{WORKER_ID}] Starting — {len(drugs)} drugs x {len(QUANTITIES)} quantities")
+    log.info(f"[{WORKER_ID}] Starting — {len(drugs)} drugs x {len(QUANTITIES)} quantities x {len(PHARMACY_CONFIGS)} pharmacies")
 
     total = 0
     for drug_name, strength in drugs:
         for qty in QUANTITIES:
-            records = buzz_scrape(drug_name, strength, qty, "76102")
-            for rec in records:
-                # Skip brand-only pricing (generics should be < $500)
-                if float(rec.get('cash_price', 0)) > 500:
-                    continue
-                if post_price(rec):
-                    total += 1
-            time.sleep(1)
+            for pharmacy in PHARMACY_CONFIGS:
+                try:
+                    records = buzz_scrape(drug_name, strength, qty, pharmacy["zip"])
+                    for rec in records:
+                        if float(rec.get("cash_price", 0)) > 500:
+                            continue
+                        if post_price(rec):
+                            total += 1
+                    time.sleep(0.5)
+                except Exception as e:
+                    log.warning(f"Pharmacy loop error {drug_name} @ {pharmacy['zip']}: {e}")
         log.info(f"[{WORKER_ID}] {drug_name}: {total} total inserted so far")
 
     log.info(f"[{WORKER_ID}] Done. Total inserted: {total}")
