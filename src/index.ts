@@ -523,6 +523,32 @@ router.get('/api/pharmacies', async (request: Request, env: any) => {
   return json(results || [])
 })
 
+/* ---------------- QUEUE DRUG ---------------- */
+
+router.post('/api/queue-drug', async (request: Request, env: Env) => {
+  try {
+    const body: any = await request.json()
+    const drugName = (body.drug_name || '').toUpperCase().trim()
+    const zip = (body.zip || '76102').trim()
+    const source = body.source || 'user_submission'
+    if (!drugName) return json({ error: 'missing_drug_name' }, 400)
+
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO scrape_jobs (drug_name, zip_code, source, status, created_at)
+      VALUES (?, ?, ?, 'queued', CURRENT_TIMESTAMP)
+    `).bind(drugName, zip, source).run().catch(() => {})
+
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO drug_search (drug_name, source, created_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `).bind(drugName, source).run().catch(() => {})
+
+    return json({ success: true, drug: drugName, status: 'queued' })
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
 /* ---------------- RETAIL PRICE INGEST ---------------- */
 
 router.post('/api/retail-price', async (request: Request, env: any) => {
