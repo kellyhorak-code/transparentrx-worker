@@ -29,7 +29,7 @@ WORKER_URL   = "https://transparentrx-worker.kellybhorak.workers.dev"
 QUANTITIES   = [30, 90]
 POST_TIMEOUT = 60
 RETRY_DELAY  = 5
-LOOP_PAUSE   = 14400   # 4 hours between full passes
+LOOP_PAUSE   = 3600    # 1 hour between full passes
 BATCH_SIZE   = 200     # records per POST to batch endpoint
 
 PRIORITY_PHARMACIES = [p for p in PHARMACY_CONFIGS if p.get('zip') in (
