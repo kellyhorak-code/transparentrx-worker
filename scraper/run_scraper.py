@@ -1,111 +1,131 @@
 #!/usr/bin/env python3
-import sys, os
+"""
+TransparentRx Scraper — Bulletproof Continuous Mode
+Runs forever. Retries every error. Never stops.
+"""
+import sys, os, time, uuid, logging, requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-import requests, time, uuid, logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
-from pharmacy_scraper import scrape as buzz_scrape
 
 try:
     from drug_catalog import TIER_1_DAILY
 except ImportError:
-    TIER_1_DAILY = [("lisinopril","10mg"),("metformin","500mg"),("atorvastatin","20mg"),
-                    ("amlodipine","5mg"),("losartan","50mg"),("gabapentin","300mg"),
-                    ("omeprazole","20mg"),("levothyroxine","50mcg"),("hydrochlorothiazide","25mg")]
+    TIER_1_DAILY = [
+        ("lisinopril","10mg"),("metformin","500mg"),("atorvastatin","20mg"),
+        ("amlodipine","5mg"),("losartan","50mg"),("gabapentin","300mg"),
+        ("omeprazole","20mg"),("levothyroxine","50mcg"),("hydrochlorothiazide","25mg"),
+    ]
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+from pharmacy_scraper import scrape as buzz_scrape, PHARMACY_CONFIGS
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ]
+)
 log = logging.getLogger(__name__)
 
-WORKER_URL = "https://transparentrx-worker.kellybhorak.workers.dev"
-WORKER_ID  = str(uuid.uuid4())[:8]
+WORKER_URL  = "https://transparentrx-worker.kellybhorak.workers.dev"
+QUANTITIES  = [30, 90]
+POST_TIMEOUT = 30
+RETRY_DELAY  = 5    # seconds between retries on error
+LOOP_PAUSE   = 60   # seconds between full catalog passes
 
-ZIPS = ["76102","10001","75201","60601","90001","33101","98101","30301","85001","19103"]
-QUANTITIES = [30, 90]
-
-# Multiple pharmacy NPIs for geographic spread
-
-def scrape_pharmacy(drug_name, strength, quantity, zip_code, pharmacy):
+def post_price(record, session):
+    """POST a single price record. Returns True on success."""
     try:
-        from pharmacy_scraper import search_drug, buzz_headers, STRENGTHS_URL
-        import requests as req
-
-        drug_id = search_drug(drug_name)
-        if not drug_id:
-            return []
-
-        r = req.post(STRENGTHS_URL, headers=buzz_headers(), json={
-            "messageCode": "nnIWk4P2",
-            "clientID": "RXCOMP-CVS",
-            "drugParameters": {"drugNameID": drug_id},
-            "location": {"npis": [pharmacy["npi"]]},
-            "options": {"includeDrugDictionary": True}
-        }, timeout=15)
-
-        data = r.json()
-        price_data = data.get("data", {}).get("price", {})
-        results = price_data.get("results", [])
-        drug_dict = price_data.get("drugDictionary", [])
-
-        matched_ndc = None
-        target = strength.lower().replace(" ", "")
-        for drug in drug_dict:
-            for form in drug.get("forms", []):
-                for s in form.get("strengths", []):
-                    if s.get("strength","").lower().replace(" ","") == target:
-                        matched_ndc = s.get("ndcRepresented")
-                        break
-
-        records = []
-        for result in results:
-            pricing = result.get("pharmacyPricing", {})
-            day_supply = pricing.get("daySupply", [])
-            retail = pricing.get("estimatedRetailPrice")
-            price = float(day_supply[0].get("price", 0)) if day_supply else (float(retail) if retail else 0)
-            if price <= 0:
-                continue
-            records.append({
-                "drug_name": drug_name, "strength": strength,
-                "ndc": pricing.get("ndcSelected") or matched_ndc,
-                "quantity": quantity, "zip_code": pharmacy["zip"],
-                "pharmacy_name": pharmacy["name"], "pharmacy_chain": pharmacy["chain"],
-                "cash_price": price, "coupon_price": price, "source": "buzzintegrations"
-            })
-        return records
-    except Exception as e:
-        log.warning(f"Scrape error {drug_name} @ {pharmacy["name"]}: {e}")
-        return []
-
-def post_price(record):
-    try:
-        r = requests.post(WORKER_URL + "/api/retail-price", json=record, timeout=30)
+        r = session.post(
+            WORKER_URL + "/api/retail-price",
+            json=record,
+            timeout=POST_TIMEOUT
+        )
         return r.status_code == 200
+    except requests.exceptions.Timeout:
+        log.warning(f"POST timeout — will retry")
+        return False
+    except requests.exceptions.ConnectionError as e:
+        log.warning(f"POST connection error: {e}")
+        return False
     except Exception as e:
         log.warning(f"POST error: {e}")
         return False
 
-def main():
-    from pharmacy_scraper import PHARMACY_CONFIGS
-    drugs = TIER_1_DAILY
-    log.info(f"[{WORKER_ID}] Starting — {len(drugs)} drugs x {len(QUANTITIES)} quantities x {len(PHARMACY_CONFIGS)} pharmacies")
+def scrape_with_retry(drug_name, strength, qty, pharmacy, max_retries=3):
+    """Scrape one drug/pharmacy combo with retries."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            records = buzz_scrape(drug_name, strength, qty, pharmacy["zip"])
+            return records
+        except Exception as e:
+            log.warning(f"Scrape attempt {attempt}/{max_retries} failed for {drug_name} @ {pharmacy['zip']}: {e}")
+            if attempt < max_retries:
+                time.sleep(RETRY_DELAY)
+    return []
 
-    total = 0
+def run_pass(session, run_id):
+    """Run one full pass through all drugs × quantities × pharmacies."""
+    drugs = TIER_1_DAILY
+    total_inserted = 0
+    total_attempted = 0
+
+    log.info(f"[{run_id}] ── Starting pass: {len(drugs)} drugs × {len(QUANTITIES)} quantities × {len(PHARMACY_CONFIGS)} pharmacies ──")
+
     for drug_name, strength in drugs:
+        drug_inserted = 0
         for qty in QUANTITIES:
             for pharmacy in PHARMACY_CONFIGS:
-                try:
-                    records = buzz_scrape(drug_name, strength, qty, pharmacy["zip"])
-                    for rec in records:
-                        if float(rec.get("cash_price", 0)) > 500:
-                            continue
-                        if post_price(rec):
-                            total += 1
-                    time.sleep(0.5)
-                except Exception as e:
-                    log.warning(f"Pharmacy loop error {drug_name} @ {pharmacy['zip']}: {e}")
-        log.info(f"[{WORKER_ID}] {drug_name}: {total} total inserted so far")
+                records = scrape_with_retry(drug_name, strength, qty, pharmacy)
+                for rec in records:
+                    try:
+                        price = float(rec.get('cash_price', 0))
+                    except (ValueError, TypeError):
+                        continue
+                    if price <= 0 or price > 500:
+                        continue
+                    total_attempted += 1
+                    # Retry post up to 3 times
+                    for post_attempt in range(3):
+                        if post_price(rec, session):
+                            total_inserted += 1
+                            drug_inserted += 1
+                            break
+                        time.sleep(2)
+                time.sleep(0.4)  # polite delay between pharmacy calls
 
-    log.info(f"[{WORKER_ID}] Done. Total inserted: {total}")
+        log.info(f"[{run_id}] {drug_name}: +{drug_inserted} records this pass | running total: {total_inserted}")
+
+    log.info(f"[{run_id}] ── Pass complete: {total_inserted}/{total_attempted} inserted ──")
+    return total_inserted
+
+def main():
+    pass_num = 0
+    session = requests.Session()
+    session.headers.update({"Content-Type": "application/json"})
+
+    log.info("═══════════════════════════════════════════════════")
+    log.info("  TransparentRx Scraper — CONTINUOUS MODE ACTIVE")
+    log.info(f"  {len(PHARMACY_CONFIGS)} pharmacies · {len(TIER_1_DAILY)} drugs · runs forever")
+    log.info("═══════════════════════════════════════════════════")
+
+    while True:
+        pass_num += 1
+        run_id = str(uuid.uuid4())[:8]
+        try:
+            inserted = run_pass(session, run_id)
+            log.info(f"Pass #{pass_num} complete — {inserted} records inserted. Pausing {LOOP_PAUSE}s before next pass.")
+        except KeyboardInterrupt:
+            log.info("Keyboard interrupt — stopping scraper.")
+            break
+        except Exception as e:
+            log.error(f"Pass #{pass_num} crashed unexpectedly: {e} — restarting in {RETRY_DELAY}s")
+            time.sleep(RETRY_DELAY)
+            # Recreate session on crash
+            session = requests.Session()
+            session.headers.update({"Content-Type": "application/json"})
+            continue
+
+        time.sleep(LOOP_PAUSE)
 
 if __name__ == "__main__":
     main()
