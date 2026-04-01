@@ -176,10 +176,9 @@ def promote_drugs_to_catalog(session, run_id):
         log.info(f"[{run_id}] ── {promoted_count} drug(s) promoted to main catalog. Reloading... ──")
         # Reload the catalog module so next pass picks up new drugs
         import importlib
-        import drug_catalog
-        importlib.reload(drug_catalog)
-        global TIER_1_DAILY
-        TIER_1_DAILY = drug_catalog.TIER_1_DAILY
+        import drug_catalog as _dc
+        importlib.reload(_dc)
+        TIER_1_DAILY[:] = _dc.TIER_1_DAILY
         log.info(f"[{run_id}] Catalog now has {len(TIER_1_DAILY)} drugs.")
 
     return promoted_count
