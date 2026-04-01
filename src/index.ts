@@ -627,6 +627,61 @@ router.post('/api/retail-price', async (request: Request, env: any) => {
   }
 })
 
+/* ---------------- RETAIL PRICE BATCH INGEST ---------------- */
+
+router.post('/api/retail-price-batch', async (request: Request, env: any) => {
+  try {
+    const body: any = await request.json()
+    const records: any[] = body.records || []
+    if (!records.length) return json({ error: 'empty_batch' }, 400)
+
+    const normalize = (name: string) =>
+      name.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()).trim()
+
+    const stmt = env.DB.prepare(`
+      INSERT INTO retail_prices (
+        ndc, drug_name, strength, pharmacy_name, pharmacy_chain,
+        cash_price, coupon_price, quantity, zip_code, source, scraped_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `)
+
+    let inserted = 0
+    let skipped = 0
+
+    // D1 batch — process in chunks of 100
+    const CHUNK = 100
+    for (let i = 0; i < records.length; i += CHUNK) {
+      const chunk = records.slice(i, i + CHUNK)
+      const stmts = chunk
+        .filter((r: any) => {
+          const p = parseFloat(r.cash_price)
+          return r.pharmacy_name && p >= 0.01 && p <= 500
+        })
+        .map((r: any) => stmt.bind(
+          r.ndc || null,
+          r.drug_name || null,
+          r.strength || null,
+          normalize(r.pharmacy_name),
+          r.pharmacy_chain ? normalize(r.pharmacy_chain) : normalize(r.pharmacy_name),
+          parseFloat(r.cash_price),
+          parseFloat(r.coupon_price) || parseFloat(r.cash_price),
+          r.quantity || null,
+          r.zip_code || null,
+          r.source || 'scraper'
+        ))
+      skipped += chunk.length - stmts.length
+      if (stmts.length > 0) {
+        await env.DB.batch(stmts)
+        inserted += stmts.length
+      }
+    }
+
+    return json({ success: true, inserted, skipped, total: records.length })
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
 /* ---------------- INGEST NADAC ---------------- */
 
 router.get('/api/status', async (request: Request, env: any) => {
