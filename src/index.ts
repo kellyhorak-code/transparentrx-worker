@@ -90,6 +90,29 @@ router.post('/api/price', async (request: Request, env: Env) => {
     if (!userPrice) return json({ error: 'missing_price' }, 400)
     if (!bodyDrugName && !ndc) return json({ error: 'missing_drug' }, 400)
 
+    // ── FINGERPRINT GATE ──
+    const ip = request.headers.get('cf-connecting-ip') ||
+               request.headers.get('x-forwarded-for') || 'unknown'
+    const ua = (request.headers.get('user-agent') || '').slice(0, 120)
+    const lang = request.headers.get('accept-language') || ''
+    const raw = ip + '|' + ua + '|' + lang
+    // Simple hash: sum of char codes mod 1e9
+    let h = 0
+    for (let i = 0; i < raw.length; i++) h = (Math.imul(31, h) + raw.charCodeAt(i)) | 0
+    const fingerprint = Math.abs(h).toString(36)
+
+    // Check IP signal and fingerprint — both must be clear
+    const existingIP = await env.DB.prepare(
+      "SELECT id FROM free_usage WHERE signal_type='ip' AND signal_value=? LIMIT 1"
+    ).bind(ip).first()
+    const existingFP = await env.DB.prepare(
+      "SELECT id FROM free_usage WHERE fingerprint=? LIMIT 1"
+    ).bind(fingerprint).first()
+
+    if (existingIP || existingFP) {
+      return json({ error: 'paywall', message: 'free_analysis_used' }, 402)
+    }
+
     // NDC lookup — optional, fall back to drug name
     let drugRow: any = null
     if (ndc) {
