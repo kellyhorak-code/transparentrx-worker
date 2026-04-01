@@ -549,6 +549,116 @@ router.post('/api/queue-drug', async (request: Request, env: Env) => {
   }
 })
 
+/* ---------------- AUTO-PROMOTE DRUGS ---------------- */
+
+// Called by scraper — returns user-submitted drugs ready for promotion
+// Criteria: 10+ observations across 3+ pharmacies, status = complete
+router.get('/api/promotable-drugs', async (request: Request, env: Env) => {
+  try {
+    const result = await env.DB.prepare(`
+      SELECT
+        LOWER(drug_name) as drug_name,
+        COUNT(*) as observations,
+        COUNT(DISTINCT pharmacy_name) as pharmacy_count,
+        MIN(cash_price) as min_price,
+        MAX(cash_price) as max_price
+      FROM retail_prices
+      WHERE LOWER(drug_name) IN (
+        SELECT LOWER(drug_name) FROM scrape_jobs
+        WHERE source = 'user_submission' AND status = 'complete'
+      )
+      GROUP BY LOWER(drug_name)
+      HAVING observations >= 10 AND pharmacy_count >= 3
+    `).all()
+
+    // Only return drugs not already in scrape_jobs as promoted
+    const promotable = []
+    for (const row of (result.results || [])) {
+      const already = await env.DB.prepare(
+        "SELECT id FROM scrape_jobs WHERE LOWER(drug_name) = ? AND status = 'promoted' LIMIT 1"
+      ).bind(row.drug_name).first()
+      if (!already) promotable.push(row)
+    }
+
+    return json(promotable)
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
+// Mark drug as promoted
+router.post('/api/promote-drug', async (request: Request, env: Env) => {
+  try {
+    const body: any = await request.json()
+    const drugName = (body.drug_name || '').toLowerCase().trim()
+    if (!drugName) return json({ error: 'missing_drug_name' }, 400)
+
+    await env.DB.prepare(`
+      UPDATE scrape_jobs SET status = 'promoted', completed_at = CURRENT_TIMESTAMP
+      WHERE LOWER(drug_name) = ? AND source = 'user_submission'
+    `).bind(drugName).run()
+
+    return json({ success: true, drug: drugName, status: 'promoted' })
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
+/* ---------------- AUTO-PROMOTE DRUGS ---------------- */
+
+// Called by scraper — returns user-submitted drugs ready for promotion
+// Criteria: 10+ observations across 3+ pharmacies, status = complete
+router.get('/api/promotable-drugs', async (request: Request, env: Env) => {
+  try {
+    const result = await env.DB.prepare(`
+      SELECT
+        LOWER(drug_name) as drug_name,
+        COUNT(*) as observations,
+        COUNT(DISTINCT pharmacy_name) as pharmacy_count,
+        MIN(cash_price) as min_price,
+        MAX(cash_price) as max_price
+      FROM retail_prices
+      WHERE LOWER(drug_name) IN (
+        SELECT LOWER(drug_name) FROM scrape_jobs
+        WHERE source = 'user_submission' AND status = 'complete'
+      )
+      GROUP BY LOWER(drug_name)
+      HAVING observations >= 10 AND pharmacy_count >= 3
+    `).all()
+
+    // Only return drugs not already in scrape_jobs as promoted
+    const promotable = []
+    for (const row of (result.results || [])) {
+      const already = await env.DB.prepare(
+        "SELECT id FROM scrape_jobs WHERE LOWER(drug_name) = ? AND status = 'promoted' LIMIT 1"
+      ).bind(row.drug_name).first()
+      if (!already) promotable.push(row)
+    }
+
+    return json(promotable)
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
+// Mark drug as promoted
+router.post('/api/promote-drug', async (request: Request, env: Env) => {
+  try {
+    const body: any = await request.json()
+    const drugName = (body.drug_name || '').toLowerCase().trim()
+    if (!drugName) return json({ error: 'missing_drug_name' }, 400)
+
+    await env.DB.prepare(`
+      UPDATE scrape_jobs SET status = 'promoted', completed_at = CURRENT_TIMESTAMP
+      WHERE LOWER(drug_name) = ? AND source = 'user_submission'
+    `).bind(drugName).run()
+
+    return json({ success: true, drug: drugName, status: 'promoted' })
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
 /* ---------------- SCRAPE JOBS ---------------- */
 
 // Fetch queued jobs — scraper polls this
