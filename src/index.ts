@@ -549,6 +549,40 @@ router.post('/api/queue-drug', async (request: Request, env: Env) => {
   }
 })
 
+/* ---------------- SCRAPE JOBS ---------------- */
+
+// Fetch queued jobs — scraper polls this
+router.get('/api/scrape-jobs', async (request: Request, env: Env) => {
+  try {
+    const result = await env.DB.prepare(`
+      SELECT id, drug_name, zip_code, source
+      FROM scrape_jobs
+      WHERE status = 'queued'
+      ORDER BY created_at ASC
+      LIMIT 50
+    `).all()
+    return json(result.results || [])
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
+// Mark job complete — scraper calls after processing
+router.post('/api/scrape-jobs/complete', async (request: Request, env: Env) => {
+  try {
+    const body: any = await request.json()
+    const id = body.id
+    const status = body.status || 'complete'
+    if (!id) return json({ error: 'missing_id' }, 400)
+    await env.DB.prepare(`
+      UPDATE scrape_jobs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).bind(status, id).run()
+    return json({ success: true })
+  } catch(e: any) {
+    return json({ error: e.message }, 500)
+  }
+})
+
 /* ---------------- RETAIL PRICE INGEST ---------------- */
 
 router.post('/api/retail-price', async (request: Request, env: any) => {
