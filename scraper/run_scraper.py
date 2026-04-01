@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 TransparentRx Scraper — Bulletproof Continuous Mode
+Batch inserts — one POST per drug instead of one per record.
 Runs forever. Retries every error. Never stops.
-Polls scrape_jobs for user-submitted drugs after every standard pass.
 """
 import sys, os, time, uuid, logging, requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,31 +27,59 @@ log = logging.getLogger(__name__)
 
 WORKER_URL   = "https://transparentrx-worker.kellybhorak.workers.dev"
 QUANTITIES   = [30, 90]
-POST_TIMEOUT = 30
+POST_TIMEOUT = 60
 RETRY_DELAY  = 5
-LOOP_PAUSE   = 60
+LOOP_PAUSE   = 14400   # 4 hours between full passes
+BATCH_SIZE   = 200     # records per POST to batch endpoint
 
-# Limit queued job scraping to these chains for speed
-PRIORITY_PHARMACIES = [p for p in PHARMACY_CONFIGS if p.get('zip') in ('76102','77001','75201','90001','60601','10001','98101','85004','32201','78701')]
+PRIORITY_PHARMACIES = [p for p in PHARMACY_CONFIGS if p.get('zip') in (
+    '76102','77001','75201','90001','60601','10001','98101','85004','32201','78701'
+)]
 if not PRIORITY_PHARMACIES:
     PRIORITY_PHARMACIES = PHARMACY_CONFIGS[:20]
 
-def post_price(record, session):
-    try:
-        r = session.post(WORKER_URL + "/api/retail-price", json=record, timeout=POST_TIMEOUT)
-        return r.status_code == 200
-    except Exception as e:
-        log.warning(f"POST error: {e}")
-        return False
-
-def scrape_with_retry(drug_name, strength, qty, pharmacy, max_retries=3):
-    for attempt in range(1, max_retries + 1):
+def post_batch(records, session, retries=3):
+    """POST a batch of records in one request. Returns (inserted, skipped)."""
+    if not records:
+        return 0, 0
+    for attempt in range(1, retries + 1):
         try:
-            records = buzz_scrape(drug_name, strength, qty, pharmacy["zip"])
-            return records
+            r = session.post(
+                WORKER_URL + "/api/retail-price-batch",
+                json={"records": records},
+                timeout=POST_TIMEOUT
+            )
+            if r.status_code == 200:
+                data = r.json()
+                return data.get('inserted', 0), data.get('skipped', 0)
+            else:
+                log.warning(f"Batch POST {r.status_code}: {r.text[:100]}")
+        except requests.exceptions.Timeout:
+            log.warning(f"Batch POST timeout (attempt {attempt}/{retries})")
         except Exception as e:
-            log.warning(f"Scrape attempt {attempt}/{max_retries} failed for {drug_name} @ {pharmacy['zip']}: {e}")
-            if attempt < max_retries:
+            log.warning(f"Batch POST error (attempt {attempt}/{retries}): {e}")
+        if attempt < retries:
+            time.sleep(RETRY_DELAY)
+    return 0, len(records)
+
+def flush_batch(batch, session):
+    """Flush accumulated records in BATCH_SIZE chunks."""
+    total_inserted = 0
+    for i in range(0, len(batch), BATCH_SIZE):
+        chunk = batch[i:i + BATCH_SIZE]
+        ins, skp = post_batch(chunk, session)
+        total_inserted += ins
+        log.debug(f"Flushed chunk: {ins} inserted, {skp} skipped")
+    return total_inserted
+
+def scrape_drug(drug_name, strength, qty, pharmacy):
+    """Scrape one drug/pharmacy combo with retries."""
+    for attempt in range(1, 4):
+        try:
+            return buzz_scrape(drug_name, strength, qty, pharmacy["zip"])
+        except Exception as e:
+            log.warning(f"Scrape attempt {attempt}/3 failed: {drug_name} @ {pharmacy['zip']}: {e}")
+            if attempt < 3:
                 time.sleep(RETRY_DELAY)
     return []
 
@@ -66,7 +94,6 @@ def mark_job_complete(job_id, session, status='complete'):
         log.warning(f"Could not mark job {job_id} complete: {e}")
 
 def fetch_queued_jobs(session):
-    """Fetch user-submitted drugs queued for scraping."""
     try:
         r = session.get(WORKER_URL + "/api/scrape-jobs", timeout=15)
         if r.status_code == 200:
@@ -76,13 +103,13 @@ def fetch_queued_jobs(session):
     return []
 
 def run_queued_jobs(session, run_id):
-    """Process user-submitted drug queue — runs after every standard pass."""
+    """Process user-submitted drug queue."""
     jobs = fetch_queued_jobs(session)
     if not jobs:
         log.info(f"[{run_id}] No queued jobs.")
         return 0
 
-    log.info(f"[{run_id}] ── Queued Jobs: {len(jobs)} user-submitted drugs to scrape ──")
+    log.info(f"[{run_id}] ── Queued Jobs: {len(jobs)} user-submitted drugs ──")
     total_inserted = 0
 
     for job in jobs:
@@ -94,18 +121,11 @@ def run_queued_jobs(session, run_id):
             continue
 
         drug_name = drug_raw.lower()
-        log.info(f"[{run_id}] Queued job: {drug_raw} @ {zip_code}")
+        zip_pharmacies = [p for p in PHARMACY_CONFIGS if p.get('zip') == zip_code] or PRIORITY_PHARMACIES
+        batch = []
 
-        # Find pharmacies near the submitted ZIP, fall back to priority list
-        zip_pharmacies = [p for p in PHARMACY_CONFIGS if p.get('zip') == zip_code]
-        if not zip_pharmacies:
-            zip_pharmacies = PRIORITY_PHARMACIES
-
-        job_inserted = 0
-        # Scrape 30-day only for quick initial data
-        for pharmacy in zip_pharmacies[:15]:
-            # Use empty strength — BuzzIntegrations handles strength lookup
-            records = scrape_with_retry(drug_name, '', 30, pharmacy)
+        for pharmacy in zip_pharmacies[:5]:
+            records = scrape_drug(drug_name, '', 30, pharmacy)
             for rec in records:
                 try:
                     price = float(rec.get('cash_price', 0))
@@ -113,33 +133,33 @@ def run_queued_jobs(session, run_id):
                     continue
                 if price <= 0 or price > 500:
                     continue
-                for _ in range(3):
-                    if post_price(rec, session):
-                        total_inserted += 1
-                        job_inserted += 1
-                        break
-                    time.sleep(2)
+                batch.append(rec)
             time.sleep(0.4)
 
-        log.info(f"[{run_id}] Queued job {drug_raw}: {job_inserted} records inserted")
-        mark_job_complete(job_id, session, 'complete' if job_inserted > 0 else 'no_data')
+        ins = flush_batch(batch, session)
+        total_inserted += ins
+        log.info(f"[{run_id}] Queued: {drug_raw} → {ins} records inserted")
+        mark_job_complete(job_id, session, 'complete' if ins > 0 else 'no_data')
 
-    log.info(f"[{run_id}] ── Queued jobs done: {total_inserted} total records inserted ──")
+    log.info(f"[{run_id}] ── Queued jobs done: {total_inserted} total ──")
     return total_inserted
 
 def run_pass(session, run_id):
-    """Run one full pass through all standard catalog drugs."""
+    """
+    Full catalog pass — collects ALL records per drug across all pharmacies
+    then flushes in one batch per drug. Reduces worker calls by ~97%.
+    """
     drugs = TIER_1_DAILY
     total_inserted = 0
-    total_attempted = 0
 
-    log.info(f"[{run_id}] ── Starting pass: {len(drugs)} drugs × {len(QUANTITIES)} quantities × {len(PHARMACY_CONFIGS)} pharmacies ──")
+    log.info(f"[{run_id}] ── Starting pass: {len(drugs)} drugs × {len(QUANTITIES)} qty × {len(PHARMACY_CONFIGS)} pharmacies (batch mode) ──")
 
     for drug_name, strength in drugs:
-        drug_inserted = 0
+        drug_batch = []
+
         for qty in QUANTITIES:
             for pharmacy in PHARMACY_CONFIGS:
-                records = scrape_with_retry(drug_name, strength, qty, pharmacy)
+                records = scrape_drug(drug_name, strength, qty, pharmacy)
                 for rec in records:
                     try:
                         price = float(rec.get('cash_price', 0))
@@ -147,18 +167,15 @@ def run_pass(session, run_id):
                         continue
                     if price <= 0 or price > 500:
                         continue
-                    total_attempted += 1
-                    for _ in range(3):
-                        if post_price(rec, session):
-                            total_inserted += 1
-                            drug_inserted += 1
-                            break
-                        time.sleep(2)
-                time.sleep(0.4)
+                    drug_batch.append(rec)
+                time.sleep(0.35)
 
-        log.info(f"[{run_id}] {drug_name}: +{drug_inserted} records | running total: {total_inserted}")
+        # One batch POST per drug instead of one POST per record
+        drug_inserted = flush_batch(drug_batch, session)
+        total_inserted += drug_inserted
+        log.info(f"[{run_id}] {drug_name}: {len(drug_batch)} scraped → {drug_inserted} inserted | total: {total_inserted}")
 
-    log.info(f"[{run_id}] ── Pass complete: {total_inserted}/{total_attempted} inserted ──")
+    log.info(f"[{run_id}] ── Pass complete: {total_inserted} total inserted ──")
     return total_inserted
 
 def main():
@@ -167,8 +184,9 @@ def main():
     session.headers.update({"Content-Type": "application/json"})
 
     log.info("═══════════════════════════════════════════════════════")
-    log.info("  TransparentRx Scraper — CONTINUOUS MODE ACTIVE")
-    log.info(f"  {len(PHARMACY_CONFIGS)} pharmacies · {len(TIER_1_DAILY)} catalog drugs · runs forever")
+    log.info("  TransparentRx Scraper — BATCH MODE ACTIVE")
+    log.info(f"  {len(PHARMACY_CONFIGS)} pharmacies · {len(TIER_1_DAILY)} drugs")
+    log.info(f"  {BATCH_SIZE} records/POST · {LOOP_PAUSE//3600}h between passes")
     log.info("  User-submitted drugs polled after every pass")
     log.info("═══════════════════════════════════════════════════════")
 
@@ -176,16 +194,12 @@ def main():
         pass_num += 1
         run_id = str(uuid.uuid4())[:8]
         try:
-            # 1 — Standard catalog pass
             inserted = run_pass(session, run_id)
             log.info(f"Pass #{pass_num} complete — {inserted} records. Checking queued jobs...")
-
-            # 2 — User-submitted drug queue
             queued = run_queued_jobs(session, run_id)
-            log.info(f"Pass #{pass_num} queued jobs — {queued} records. Pausing {LOOP_PAUSE}s.")
-
+            log.info(f"Pass #{pass_num} queued — {queued} records. Next pass in {LOOP_PAUSE//3600}h.")
         except KeyboardInterrupt:
-            log.info("Keyboard interrupt — stopping.")
+            log.info("Stopping.")
             break
         except Exception as e:
             log.error(f"Pass #{pass_num} crashed: {e} — restarting in {RETRY_DELAY}s")
@@ -193,7 +207,6 @@ def main():
             session = requests.Session()
             session.headers.update({"Content-Type": "application/json"})
             continue
-
         time.sleep(LOOP_PAUSE)
 
 if __name__ == "__main__":
