@@ -241,14 +241,9 @@ def run_pass(session, run_id):
         for qty in QUANTITIES:
             for pharmacy in PHARMACY_CONFIGS:
                 records = scrape_drug(drug_name, strength, qty, pharmacy)
-                for rec in records:
-                    try:
-                        price = float(rec.get('cash_price', 0))
-                    except (ValueError, TypeError):
-                        continue
-                    if price <= 0 or price > 500:
-                        continue
-                    drug_batch.append(rec)
+                valid = [r for r in records if 0.01 < float(r.get('cash_price',0) or 0) <= 500]
+                drug_batch.extend(valid)
+                log.debug(f"  {pharmacy['chain']} {pharmacy['zip']} qty={qty}: {len(valid)} records")
                 time.sleep(0.35)
 
         # One batch POST per drug instead of one POST per record
