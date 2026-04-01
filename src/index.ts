@@ -457,6 +457,11 @@ ${promptData.isFirstUser && promptData.daysToBreakeven ? `- MANDATORY FINAL 2 SE
       insight = `${drug.nonproprietary_name || drug.proprietary_name} shows a distortion score of ${Number(distortionScore.toFixed(0))}/100, indicating ${distLabel}. At $${userPrice} paid versus a fair market price of $${Number(tp.trueMid.toFixed(2))}, this represents ${verdictText}. The NADAC wholesale acquisition cost is $${Number((drug.nadac_price || 0).toFixed(4))} per unit. ${sampleSize} price observations were used in this analysis. Switching to ${bestPharmacy} at $${bestPrice} could save approximately $${Math.abs(savings)} on this fill.`
     }
 
+    // ── RECORD USAGE ──
+    await env.DB.prepare(
+      "INSERT INTO free_usage (signal_type, signal_value, fingerprint, used_at) VALUES ('ip', ?, ?, CURRENT_TIMESTAMP)"
+    ).bind(ip, fingerprint).run().catch(() => {})
+
     return json({
       ndc,
       drugName: drug.nonproprietary_name || drug.proprietary_name,
