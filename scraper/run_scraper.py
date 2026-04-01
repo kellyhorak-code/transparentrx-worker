@@ -102,6 +102,88 @@ def fetch_queued_jobs(session):
         log.warning(f"Could not fetch scrape jobs: {e}")
     return []
 
+def fetch_promotable_drugs(session):
+    """Fetch user-submitted drugs that have enough observations to join main catalog."""
+    try:
+        r = session.get(WORKER_URL + "/api/promotable-drugs", timeout=15)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        log.warning(f"Could not fetch promotable drugs: {e}")
+    return []
+
+def mark_promoted(drug_name, session):
+    """Mark drug as promoted in worker DB."""
+    try:
+        session.post(
+            WORKER_URL + "/api/promote-drug",
+            json={"drug_name": drug_name},
+            timeout=15
+        )
+    except Exception as e:
+        log.warning(f"Could not mark {drug_name} as promoted: {e}")
+
+def promote_drugs_to_catalog(session, run_id):
+    """
+    Check for user-submitted drugs with 10+ observations across 3+ pharmacies.
+    Append them to drug_catalog.py so they run on every future pass.
+    """
+    candidates = fetch_promotable_drugs(session)
+    if not candidates:
+        log.info(f"[{run_id}] No drugs ready for promotion.")
+        return 0
+
+    catalog_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drug_catalog.py")
+
+    with open(catalog_path, "r") as f:
+        catalog_content = f.read()
+
+    # Get already-catalogued drugs to avoid dupes
+    from drug_catalog import TIER_1_DAILY
+    existing = {d[0].lower().strip() for d in TIER_1_DAILY}
+
+    promoted_count = 0
+    for drug in candidates:
+        drug_name = (drug.get("drug_name") or "").lower().strip()
+        if not drug_name or drug_name in existing:
+            mark_promoted(drug_name, session)
+            continue
+
+        obs   = drug.get("observations", 0)
+        pharm = drug.get("pharmacy_count", 0)
+        lo    = drug.get("min_price", 0)
+        hi    = drug.get("max_price", 0)
+
+        # Use most common observed strength or empty string
+        entry = f'    ("{drug_name}", ""),  # auto-promoted: {obs} obs, {pharm} pharmacies, ${lo:.2f}–${hi:.2f}\n'
+
+        # Inject before closing bracket of TIER_1_DAILY
+        if catalog_content.rstrip().endswith("]"):
+            catalog_content = catalog_content.rstrip()[:-1].rstrip()
+            catalog_content += f'\n    # AUTO-PROMOTED — {drug_name.upper()}\n'
+            catalog_content += entry
+            catalog_content += "\n]\n"
+
+            with open(catalog_path, "w") as f:
+                f.write(catalog_content)
+
+            existing.add(drug_name)
+            mark_promoted(drug_name, session)
+            promoted_count += 1
+            log.info(f"[{run_id}] ✅ PROMOTED: {drug_name.upper()} → added to main catalog ({obs} obs, {pharm} pharmacies)")
+
+    if promoted_count:
+        log.info(f"[{run_id}] ── {promoted_count} drug(s) promoted to main catalog. Reloading... ──")
+        # Reload the catalog module so next pass picks up new drugs
+        import importlib
+        import drug_catalog
+        importlib.reload(drug_catalog)
+        global TIER_1_DAILY
+        TIER_1_DAILY = drug_catalog.TIER_1_DAILY
+        log.info(f"[{run_id}] Catalog now has {len(TIER_1_DAILY)} drugs.")
+
+    return promoted_count
+
 def run_queued_jobs(session, run_id):
     """Process user-submitted drug queue."""
     jobs = fetch_queued_jobs(session)
@@ -197,7 +279,9 @@ def main():
             inserted = run_pass(session, run_id)
             log.info(f"Pass #{pass_num} complete — {inserted} records. Checking queued jobs...")
             queued = run_queued_jobs(session, run_id)
-            log.info(f"Pass #{pass_num} queued — {queued} records. Next pass in {LOOP_PAUSE//3600}h.")
+            log.info(f"Pass #{pass_num} queued — {queued} records. Checking promotions...")
+            promoted = promote_drugs_to_catalog(session, run_id)
+            log.info(f"Pass #{pass_num} promotions — {promoted} drugs added to catalog. Next pass in {LOOP_PAUSE//3600}h.")
         except KeyboardInterrupt:
             log.info("Stopping.")
             break
